@@ -122,6 +122,34 @@ const std::array<BlockSpec, static_cast<size_t>(BlockId::Count)> kSpecs = {{
         "High-velocity Aether jet engine (+380 kN thrust) with blazing overdrive exhaust.",
         21.0f, 210.0f, 6.0f, 15.0f, 380.0f, 45.0f, 0.0f, 14.0f, 0.0f, 1.0f, 0.0f, 85, 3,
         {85, 195, 255}, {195, 145, 75}, true, 0.0f
+    },
+    // 17: TorpedoLauncher
+    {
+        BlockId::TorpedoLauncher, "Aether Torpedo Tube", "Ordnance",
+        "Launches guided 3D homing Aether-Torpedoes that track Leviathan cores and enemy bridges.",
+        28.0f, 240.0f, 9.0f, 0.0f, 0.0f, 0.0f, 0.0f, 18.0f, 175.0f, 2.4f, 135.0f, 125, 6,
+        {55, 165, 235}, {235, 175, 55}, true, 0.0f
+    },
+    // 18: ShockHarpoon
+    {
+        BlockId::ShockHarpoon, "Voltaic Shock-Harpoon", "Leviathan Hunting",
+        "Fires electrified tether cables that deal continuous lightning DPS and slow tethered beasts.",
+        25.0f, 235.0f, 9.0f, 0.0f, 0.0f, 0.0f, 0.0f, 15.0f, 85.0f, 2.5f, 225.0f, 110, 5,
+        {115, 225, 255}, {215, 135, 255}, true, 0.0f
+    },
+    // 19: CapacitorBank
+    {
+        BlockId::CapacitorBank, "Chrono-Aether Capacitor", "Power & Utility",
+        "Generates +35 MW power, +95 Shield HP, +55 Overdrive Fuel, and speeds ability cooldowns.",
+        18.0f, 220.0f, 7.0f, 35.0f, 0.0f, 0.0f, 35.0f, 0.0f, 0.0f, 1.0f, 0.0f, 90, 4,
+        {145, 115, 255}, {75, 235, 255}, true, 95.0f
+    },
+    // 20: FlameMortar
+    {
+        BlockId::FlameMortar, "Dragonfire Siege Mortar", "Artillery",
+        "High-caliber incendiary howitzer that ignites multi-block deck fires and melts carapace armor.",
+        24.0f, 215.0f, 8.0f, 0.0f, 0.0f, 0.0f, 0.0f, 8.0f, 115.0f, 1.65f, 165.0f, 85, 3,
+        {235, 95, 45}, {255, 195, 55}, true, 0.0f
     }
 }};
 

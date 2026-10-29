@@ -10,6 +10,18 @@ Airship::Airship(int id, const std::string& name, int faction)
     grid_.resize(static_cast<size_t>(kShipGridX * kShipGridY * kShipGridZ));
 }
 
+const char* Airship::getHullLiveryName(int liveryId) {
+    switch (liveryId % 6) {
+        case 0: return "Standard Oak & Brass";
+        case 1: return "Imperial Azure Guard";
+        case 2: return "Crimson Corsair Armada";
+        case 3: return "Solaris Gilded Sovereign";
+        case 4: return "Abyssal Void-Stalker";
+        case 5: return "Emerald Sky-Ranger";
+    }
+    return "Standard Oak & Brass";
+}
+
 bool Airship::isValidCoord(int gx, int gy, int gz) const {
     return gx >= minX() && gx <= maxX() &&
            gy >= minY() && gy <= maxY() &&
@@ -160,6 +172,7 @@ void Airship::recomputeMetrics() {
     propellerCount = 0;
     liftCellCount = 0;
     shieldProjectorCount = 0;
+    capacitorCount = 0;
 
     float computedShieldMax = 0.0f;
     int afterburnerCount = 0;
@@ -200,10 +213,12 @@ void Airship::recomputeMetrics() {
                 if (cell.id == BlockId::DeckCannon ||
                     cell.id == BlockId::FlakTurret ||
                     cell.id == BlockId::TeslaCoil ||
-                    cell.id == BlockId::PlasmaLance) {
+                    cell.id == BlockId::PlasmaLance ||
+                    cell.id == BlockId::TorpedoLauncher ||
+                    cell.id == BlockId::FlameMortar) {
                     cannonCount++;
                 }
-                if (cell.id == BlockId::HarpoonWinch) {
+                if (cell.id == BlockId::HarpoonWinch || cell.id == BlockId::ShockHarpoon) {
                     harpoonCount++;
                 }
                 if (cell.id == BlockId::SteamPropeller || cell.id == BlockId::AfterburnerJet) {
@@ -217,6 +232,9 @@ void Airship::recomputeMetrics() {
                 }
                 if (cell.id == BlockId::ShieldProjector) {
                     shieldProjectorCount++;
+                }
+                if (cell.id == BlockId::CapacitorBank) {
+                    capacitorCount++;
                 }
                 if (cell.id == BlockId::HelmBridge || cell.id == BlockId::AetherCore) {
                     hasCommandOrCore = true;
@@ -257,7 +275,7 @@ void Airship::recomputeMetrics() {
         shieldHp = std::min(shieldHp, maxShieldHp);
     }
 
-    maxAfterburnerFuel = 100.0f + static_cast<float>(afterburnerCount) * 35.0f;
+    maxAfterburnerFuel = 100.0f + static_cast<float>(afterburnerCount) * 35.0f + static_cast<float>(capacitorCount) * 55.0f;
     afterburnerFuel = std::min(afterburnerFuel, maxAfterburnerFuel);
 
     boundingRadius = std::sqrt(maxRadiusSq) + kVoxelSize;
@@ -454,9 +472,9 @@ void Airship::updatePhysics(
         shieldHitFlashTimer = std::max(0.0f, shieldHitFlashTimer - dt);
     }
     if (shieldRechargeDelay > 0.0f) {
-        shieldRechargeDelay = std::max(0.0f, shieldRechargeDelay - dt);
+        shieldRechargeDelay = std::max(0.0f, shieldRechargeDelay - dt * (1.0f + 0.12f * static_cast<float>(capacitorCount)));
     } else if (shieldHp < maxShieldHp) {
-        float shieldRegen = (18.0f + static_cast<float>(shieldProjectorCount) * 14.0f) * powerEfficiency * shieldMultiplier * dt;
+        float shieldRegen = (18.0f + static_cast<float>(shieldProjectorCount) * 14.0f + static_cast<float>(capacitorCount) * 9.0f) * powerEfficiency * shieldMultiplier * dt;
         shieldHp = std::min(maxShieldHp, shieldHp + shieldRegen);
     }
 
@@ -466,7 +484,8 @@ void Airship::updatePhysics(
         afterburnerFuel = std::max(0.0f, afterburnerFuel - 28.0f * dt);
     } else {
         isBoosting = false;
-        afterburnerFuel = std::min(maxAfterburnerFuel, afterburnerFuel + 16.0f * dt);
+        float capBoost = 16.0f + static_cast<float>(capacitorCount) * 6.5f;
+        afterburnerFuel = std::min(maxAfterburnerFuel, afterburnerFuel + capBoost * dt);
     }
 
     // 3. Update Propeller spin visual
@@ -517,7 +536,10 @@ void Airship::updatePhysics(
                     cell.id == BlockId::FlakTurret ||
                     cell.id == BlockId::TeslaCoil ||
                     cell.id == BlockId::PlasmaLance ||
-                    cell.id == BlockId::HarpoonWinch) {
+                    cell.id == BlockId::TorpedoLauncher ||
+                    cell.id == BlockId::FlameMortar ||
+                    cell.id == BlockId::HarpoonWinch ||
+                    cell.id == BlockId::ShockHarpoon) {
                     Vec3 bPos = gridToLocalPos(gx, gy, gz);
                     Vec3 toTarget = targetLocal - bPos;
                     cell.turretYaw = std::atan2(toTarget.x, -toTarget.z);
@@ -612,8 +634,10 @@ void Airship::fireWeapons(
                 bool isArtillery = (cell.id == BlockId::DeckCannon ||
                                     cell.id == BlockId::FlakTurret ||
                                     cell.id == BlockId::TeslaCoil ||
-                                    cell.id == BlockId::PlasmaLance);
-                bool isHarpoon = (cell.id == BlockId::HarpoonWinch);
+                                    cell.id == BlockId::PlasmaLance ||
+                                    cell.id == BlockId::TorpedoLauncher ||
+                                    cell.id == BlockId::FlameMortar);
+                bool isHarpoon = (cell.id == BlockId::HarpoonWinch || cell.id == BlockId::ShockHarpoon);
 
                 if ((fireCannons && isArtillery) || (fireHarpoons && isHarpoon)) {
                     const BlockSpec& spec = BlockRegistry::get(cell.id);
@@ -622,10 +646,11 @@ void Airship::fireWeapons(
                     float dist = toTarget.length();
                     Vec3 aimDir = (dist > 0.1f) ? (toTarget / dist) : orientationQuat().forward();
 
-                    // Slight ballistic elevation compensation for gravity on cannon shells
-                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::HarpoonWinch) {
+                    // Slight ballistic elevation compensation for gravity on cannon shells & flame mortars
+                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::HarpoonWinch || cell.id == BlockId::FlameMortar) {
                         float flightTime = dist / std::max(50.0f, spec.projectileSpeed);
-                        aimDir.y += 0.5f * 9.8f * flightTime / std::max(50.0f, spec.projectileSpeed);
+                        float gravFactor = (cell.id == BlockId::FlameMortar) ? 1.35f : 1.0f;
+                        aimDir.y += 0.5f * 9.8f * gravFactor * flightTime / std::max(50.0f, spec.projectileSpeed);
                         aimDir = aimDir.normalized();
                     }
 
@@ -642,7 +667,7 @@ void Airship::fireWeapons(
                     cell.weaponCooldown = spec.weaponCooldown / std::max(0.5f, powerEfficiency * reloadMultiplier);
 
                     // Apply physical cannon recoil impulse to the ship!
-                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::PlasmaLance) {
+                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::PlasmaLance || cell.id == BlockId::FlameMortar) {
                         velocity -= aimDir * (18.0f / std::max(50.0f, totalMass));
                     }
                 }

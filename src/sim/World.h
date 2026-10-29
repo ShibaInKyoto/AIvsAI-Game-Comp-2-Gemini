@@ -59,6 +59,30 @@ struct OfficerSpec {
     int baseAetherCost;
 };
 
+constexpr int kRelicCount = 5;
+
+struct RelicSpec {
+    const char* name;
+    const char* originLore;
+    const char* bonusDesc;
+    int goldCost;
+    int aetherCost;
+};
+
+enum class FleetOrder {
+    EscortFormation = 0,
+    FocusMyTarget = 1,
+    FreeHunt = 2,
+    DefensivePerimeter = 3
+};
+
+enum class WeatherState {
+    ClearTradeWinds = 0,
+    CirrusMist = 1,
+    IonAetherSquall = 2,
+    SupercellTempest = 3
+};
+
 class World {
 public:
     World();
@@ -74,6 +98,24 @@ public:
     static const std::array<OfficerSpec, 5>& getOfficerSpecs();
     bool upgradeOfficer(int officerIdx);
     void applyCrewMultipliers();
+
+    // Ancient Aether-Relic Vault (0..4)
+    static const std::array<RelicSpec, kRelicCount>& getRelicSpecs();
+    bool unlockRelic(int relicIdx);
+    int unlockedRelicCount() const;
+
+    // Fleet Admiral Squadron Orders, Weather & Hull Livery Control
+    void cycleFleetOrder();
+    static const char* getFleetOrderName(FleetOrder order);
+    void cycleWeatherState();
+    static const char* getWeatherName(WeatherState w);
+    void cyclePlayerLivery();
+
+    // Island Commodity Market Trading
+    int totalCargoUnits() const;
+    int maxCargoCapacity() const;
+    bool buyCommodity(int commodityIdx, int qty = 1);
+    bool sellCommodity(int commodityIdx, int qty = 1);
 
     // Active Tactical Ship Abilities
     bool triggerDamageControl();
@@ -108,14 +150,20 @@ public:
     std::vector<SimAudioEvent> pendingAudioEvents;
     std::vector<BountyContract> contracts;
 
-    // Player Resources, Crew Ranks & Progression
+    // Player Resources, Cargo Hold, Crew Ranks, Relics & Progression
     int playerGold = 450;
     int playerAether = 24;
     int leviathansSlain = 0;
     int piratesSunk = 0;
+    int citadelsLiberatedStat = 0;
     int blocksDestroyedStat = 0;
+    int tradeProfitStat = 0;
     int prestigeHuntTier = 1;
     std::array<int, 5> officerRanks{{0, 0, 0, 0, 0}}; // 0..3 per officer
+    std::array<int, kCommodityCount> playerCargo{{0, 0, 0, 0}};
+    std::array<bool, kRelicCount> unlockedRelics{{false, false, false, false, false}};
+    FleetOrder currentFleetOrder = FleetOrder::EscortFormation;
+    WeatherState currentWeather = WeatherState::ClearTradeWinds;
 
     // Tactical Ability Cooldowns & States
     float damageControlCooldown = 0.0f;
@@ -123,6 +171,7 @@ public:
     float sonarMarkTimer = 0.0f;
     float sonarWaveRadius = 0.0f;
     Vec3 sonarWaveOrigin{0.0f, 0.0f, 0.0f};
+    float weatherTimer = 0.0f;
     int skyAtmospherePreset = 0; // 0: Golden Dawn, 1: High Noon, 2: Crimson Dusk, 3: Starlit Night
 
     float cameraTrauma = 0.0f;

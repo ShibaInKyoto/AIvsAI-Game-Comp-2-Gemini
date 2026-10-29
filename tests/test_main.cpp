@@ -72,7 +72,7 @@ int testAirshipBuoyancyAndStructuralFracture() {
 }
 
 int testBlueprintsAndLeviathanKinematics() {
-    ASSERT_TRUE(ShipBlueprints::count() == 7, "Should have 7 starter ship blueprints including Solaris-Prime");
+    ASSERT_TRUE(ShipBlueprints::count() == 10, "Should have 10 flagship blueprints including Nemesis, Prometheus & Celestial Ark");
     for (int i = 0; i < ShipBlueprints::count(); ++i) {
         Airship s(i + 1, "Blueprint Vessel", 0);
         ShipBlueprints::applyBlueprint(s, i);
@@ -81,41 +81,58 @@ int testBlueprintsAndLeviathanKinematics() {
         ASSERT_TRUE(!s.isSinking, "Every starter ship blueprint must have positive buoyancy lift");
     }
 
-    Leviathan whale(10, LeviathanSpecies::AzureSkyWhale, {0.0f, 130.0f, -200.0f}, 42ULL);
-    ASSERT_TRUE(whale.segments.size() == 18, "Azure Sky-Whale should have 18 articulated segments");
-
-    std::vector<LeviathanAttackBolt> attacks;
-    for (int step = 0; step < 60; ++step) {
-        whale.update(1.0f / 60.0f, {0.0f, 130.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0, attacks);
+    // Verify all 6 Colossal Sky-Leviathan species initialize and step kinematics properly
+    const LeviathanSpecies allSpecies[6] = {
+        LeviathanSpecies::AzureSkyWhale,
+        LeviathanSpecies::CrimsonStormWyrm,
+        LeviathanSpecies::ObsidianDreadManta,
+        LeviathanSpecies::MaelstromSovereign,
+        LeviathanSpecies::GlacialCryoKraken,
+        LeviathanSpecies::SolarPhoenixSerpent
+    };
+    for (int sp = 0; sp < 6; ++sp) {
+        Leviathan beast(10 + sp, allSpecies[sp], {0.0f, 130.0f, -200.0f}, 42ULL + static_cast<uint64_t>(sp));
+        ASSERT_TRUE(beast.segments.size() >= 14, "Every Leviathan species must have >= 14 articulated segments");
+        std::vector<LeviathanAttackBolt> attacks;
+        for (int step = 0; step < 30; ++step) {
+            beast.update(1.0f / 60.0f, {0.0f, 130.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0, attacks);
+        }
+        for (size_t i = 1; i < beast.segments.size(); ++i) {
+            float d = (beast.segments[i].position - beast.segments[i - 1].position).length();
+            ASSERT_NEAR(d, beast.segments[i - 1].jointSpacing, 0.25f, "Leviathan spine joint constraint preserved");
+        }
     }
 
-    // Verify spine joint spacing constraint holds across all segments
-    for (size_t i = 1; i < whale.segments.size(); ++i) {
-        float d = (whale.segments[i].position - whale.segments[i - 1].position).length();
-        ASSERT_NEAR(d, whale.segments[i - 1].jointSpacing, 0.25f, "Leviathan spine joint constraint preserved");
-    }
-
-    // Verify custom 3D ship blueprint serialization to disk and back (including new block types)
+    // Verify custom 3D ship blueprint serialization to disk and back (including all 20 block types)
     {
         Airship orig(77, "Custom Sky-Dreadnought", 0);
-        ShipBlueprints::applyBlueprint(orig, 6); // Solaris-Prime
-        orig.setBlock(0, 4, 0, BlockId::PlasmaLance, 2);
+        ShipBlueprints::applyBlueprint(orig, 9); // Celestial Ark-Carrier
+        orig.setBlock(0, 4, 0, BlockId::TorpedoLauncher, 0);
+        orig.setBlock(0, 4, 1, BlockId::ShockHarpoon, 0);
+        orig.setBlock(0, 4, 2, BlockId::CapacitorBank, 0);
+        orig.setBlock(0, 4, 3, BlockId::FlameMortar, 0);
         int expectedCount = orig.occupiedBlockCount;
         ASSERT_TRUE(ShipBlueprints::saveCustomBlueprint(orig, "/tmp/test_custom_ship.aeth"), "Save custom blueprint to disk");
 
         Airship loaded(78, "Empty", 0);
         ASSERT_TRUE(ShipBlueprints::loadCustomBlueprint(loaded, "/tmp/test_custom_ship.aeth"), "Load custom blueprint from disk");
         ASSERT_TRUE(loaded.occupiedBlockCount == expectedCount, "Loaded custom blueprint block count matches original");
-        ASSERT_TRUE(loaded.getCell(0, 4, 0).id == BlockId::PlasmaLance, "Loaded custom block at (0,4,0) is PlasmaLance");
+        ASSERT_TRUE(loaded.getCell(0, 4, 0).id == BlockId::TorpedoLauncher, "Loaded custom block at (0,4,0) is TorpedoLauncher");
+        ASSERT_TRUE(loaded.getCell(0, 4, 1).id == BlockId::ShockHarpoon, "Loaded custom block at (0,4,1) is ShockHarpoon");
+        ASSERT_TRUE(loaded.getCell(0, 4, 2).id == BlockId::CapacitorBank, "Loaded custom block at (0,4,2) is CapacitorBank");
+        ASSERT_TRUE(loaded.getCell(0, 4, 3).id == BlockId::FlameMortar, "Loaded custom block at (0,4,3) is FlameMortar");
     }
     return 0;
 }
 
-int testOfficersAbilitiesAndCampaignPersistence() {
+int testOfficersAbilitiesTradingAndCampaignPersistence() {
     World world;
-    world.initWorld(20261028ULL, 6, false);
+    world.initWorld(20261028ULL, 7, false); // Nemesis Torpedo Cruiser
     world.playerGold = 2500;
     world.playerAether = 100;
+
+    ASSERT_TRUE(world.leviathans.size() == 6, "Campaign world initializes all 6 Colossal Sky-Leviathans");
+    ASSERT_TRUE(world.contracts.size() == 6, "Campaign world initializes all 6 Guild Bounty contracts");
 
     float baseReload = world.playerShip.reloadMultiplier;
     ASSERT_TRUE(world.upgradeOfficer(0), "Promoting Master Gunner Vance should succeed");
@@ -127,9 +144,55 @@ int testOfficersAbilitiesAndCampaignPersistence() {
     ASSERT_TRUE(world.triggerSonarPing(), "Acoustic Aether-Sonar should activate when ready");
     ASSERT_TRUE(world.sonarMarkTimer > 0.0f, "Sonar Mark timer active");
 
+    // Test Island Commodity Trading (player starts docked near Haven Port, island 0)
+    int goldBefore = world.playerGold;
+    int initialGrain = world.playerCargo[0];
+    ASSERT_TRUE(world.buyCommodity(0, 2), "Buying 2 Sky-Grain crates at Haven Port should succeed");
+    ASSERT_TRUE(world.playerCargo[0] == initialGrain + 2, "Player cargo holds +2 Sky-Grain crates");
+    ASSERT_TRUE(world.playerGold < goldBefore, "Gold deducted for commodity purchase");
+    ASSERT_TRUE(world.sellCommodity(0, 1), "Selling 1 Sky-Grain crate should succeed");
+    ASSERT_TRUE(world.playerCargo[0] == initialGrain + 1, "Player cargo holds +1 Sky-Grain crate after sale");
+
+    // Test Fleet Squadron Orders & Dynamic Weather cycling
+    world.cycleFleetOrder();
+    ASSERT_TRUE(world.currentFleetOrder == FleetOrder::FocusMyTarget, "Fleet order cycled to FocusMyTarget");
+    world.cycleWeatherState();
+    ASSERT_TRUE(world.currentWeather == WeatherState::CirrusMist, "Weather state cycled to CirrusMist");
+
+    // Test firing Homing Torpedoes & Shock Harpoons from Nemesis Torpedo Cruiser
+    size_t prevProj = world.projectiles.size();
+    world.firePlayerWeapons(true, true, {0.0f, 130.0f, -250.0f});
+    ASSERT_TRUE(world.projectiles.size() > prevProj, "Firing Nemesis Torpedo Cruiser spawns projectiles");
+    bool hasTorp = false, hasShock = false;
+    for (const auto& p : world.projectiles) {
+        if (p.isHomingTorpedo) hasTorp = true;
+        if (p.isShockHarpoon) hasShock = true;
+    }
+    ASSERT_TRUE(hasTorp && hasShock, "Spawned both Homing Torpedo and Shock Harpoon projectiles");
+
     size_t prevLevs = world.leviathans.size();
     world.summonApexLeviathan();
     ASSERT_TRUE(world.leviathans.size() == prevLevs + 1, "Summon Apex Leviathan spawns a new boss");
+
+    // Test Ancient Aether-Relics & Custom Fleet Hull Liveries
+    world.playerGold += 500;
+    world.playerAether += 30;
+    float reloadBeforeRelic = world.playerShip.reloadMultiplier;
+    ASSERT_TRUE(world.unlockRelic(0), "Awakening Chronos Aether-Dial Relic should succeed");
+    ASSERT_TRUE(world.unlockedRelicCount() == 1, "Unlocked relic count incremented to 1");
+    ASSERT_TRUE(world.playerShip.reloadMultiplier > reloadBeforeRelic, "Chronos Aether-Dial boosts weapon reload multiplier");
+
+    world.cyclePlayerLivery();
+    ASSERT_TRUE(world.playerShip.hullLiveryId == 1, "Hull livery cycled to Imperial Azure Guard (1)");
+
+    // Verify Fortified Stronghold islands exist with 3D Sky-Bastion Turrets
+    int strongholdCount = 0;
+    for (const auto& isl : world.archipelago.islands) {
+        if (isl.isFortifiedStronghold && !isl.bastionTurrets.empty()) {
+            strongholdCount++;
+        }
+    }
+    ASSERT_TRUE(strongholdCount >= 4, "Archipelago contains fortified stronghold citadels with bastion turrets");
 
     ASSERT_TRUE(world.saveCampaign("/tmp/test_campaign.aeth"), "Save campaign state to disk");
 
@@ -137,6 +200,9 @@ int testOfficersAbilitiesAndCampaignPersistence() {
     worldLoaded.initWorld(1ULL, 0, false);
     ASSERT_TRUE(worldLoaded.loadCampaign("/tmp/test_campaign.aeth"), "Load campaign state from disk");
     ASSERT_TRUE(worldLoaded.officerRanks[0] == 1, "Loaded campaign preserves officer rank");
+    ASSERT_TRUE(worldLoaded.playerCargo[0] == initialGrain + 1, "Loaded campaign preserves commodity cargo");
+    ASSERT_TRUE(worldLoaded.unlockedRelics[0] == true, "Loaded campaign preserves awakened Ancient Relic");
+    ASSERT_TRUE(worldLoaded.playerShip.hullLiveryId == 1, "Loaded campaign preserves Custom Hull Livery");
     return 0;
 }
 
@@ -164,10 +230,10 @@ int main() {
     std::printf("[PASS] 3D Airship Buoyancy, Shield Dome & BFS Structural Fracture Solver\n");
 
     if (testBlueprintsAndLeviathanKinematics() != 0) return 1;
-    std::printf("[PASS] 7 Ship Hull Blueprints, 16 Block Types & 18-Segment Leviathan Kinematics\n");
+    std::printf("[PASS] 10 Ship Hull Blueprints, 20 Block Types & 6 Leviathan Species Kinematics\n");
 
-    if (testOfficersAbilitiesAndCampaignPersistence() != 0) return 1;
-    std::printf("[PASS] Specialist Officers, Tactical Abilities & Campaign Persistence\n");
+    if (testOfficersAbilitiesTradingAndCampaignPersistence() != 0) return 1;
+    std::printf("[PASS] Officers, Commodity Trading, Fleet Orders, Homing Torpedoes & Campaign Persistence\n");
 
     if (testHeadlessWorldCombatAndTethers() != 0) return 1;
     std::printf("[PASS] 30-Second 120Hz Headless 3D World & AI Fleet Simulation\n");

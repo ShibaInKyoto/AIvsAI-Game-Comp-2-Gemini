@@ -87,6 +87,21 @@ void HudRenderer::drawFlightHUD(
         }
     }
 
+    // 1A. 3D Target Brackets for Fortified Stronghold Sky-Bastion Flak Towers
+    for (const auto& isl : world.archipelago.islands) {
+        if (!isl.isFortifiedStronghold || isl.isLiberated) continue;
+        float islDist = (isl.position - ship.position).length();
+        if (islDist > 750.0f) continue;
+        for (const auto& tur : isl.bastionTurrets) {
+            if (tur.destroyed || !isInFrontOfCamera(camera, tur.worldPos)) continue;
+            Vector2 scrTur = GetWorldToScreen({tur.worldPos.x, tur.worldPos.y + 8.5f, tur.worldPos.z}, camera);
+            float hpPct = std::clamp(tur.hp / std::max(1.0f, tur.maxHp), 0.0f, 1.0f);
+            DrawText("BASTION FLAK", static_cast<int>(scrTur.x - 38), static_cast<int>(scrTur.y - 18), 10, Color{255, 145, 75, 255});
+            DrawRectangle(static_cast<int>(scrTur.x - 36), static_cast<int>(scrTur.y - 6), 72, 5, Color{15, 20, 30, 210});
+            DrawRectangle(static_cast<int>(scrTur.x - 36), static_cast<int>(scrTur.y - 6), static_cast<int>(72.0f * hpPct), 5, Color{255, 95, 65, 255});
+        }
+    }
+
     // Render 3D Floating Combat Callouts (Crits, Shattered Armor, Hull Fractures)
     for (const auto& co : world.callouts) {
         if (!isInFrontOfCamera(camera, co.worldPos)) continue;
@@ -99,10 +114,10 @@ void HudRenderer::drawFlightHUD(
     }
 
     // -------------------------------------------------------------------------
-    // 1B. Top-Left Active Bounty Contract & Fleet Squadron Card
+    // 1B. Top-Left Active Bounty Contract, Fleet Order, Weather & Relics Card
     // -------------------------------------------------------------------------
-    DrawRectangle(18, 18, 345, 92, Color{11, 18, 30, 225});
-    DrawRectangleLinesEx({18.0f, 18.0f, 345.0f, 92.0f}, 1.5f, Color{65, 175, 225, 180});
+    DrawRectangle(18, 18, 376, 112, Color{11, 18, 30, 228});
+    DrawRectangleLinesEx({18.0f, 18.0f, 376.0f, 112.0f}, 1.5f, Color{65, 175, 225, 180});
 
     const Leviathan* nextLev = nullptr;
     float nextLevDist = 1e30f;
@@ -117,22 +132,28 @@ void HudRenderer::drawFlightHUD(
     }
     if (nextLev) {
         std::snprintf(buf, sizeof(buf), "ACTIVE HUNT: %s [%.0fm]", nextLev->name().c_str(), nextLevDist);
-        DrawText(buf, 28, 26, 14, Color{255, 205, 75, 255});
+        DrawText(buf, 28, 25, 14, Color{255, 205, 75, 255});
         std::snprintf(buf, sizeof(buf), "Bounty: +%d Gold, +%d Aetherium | Shatter Armor -> Core",
                       nextLev->goldBounty, nextLev->aetherBounty);
-        DrawText(buf, 28, 46, 11, Color{195, 220, 240, 255});
+        DrawText(buf, 28, 44, 11, Color{195, 220, 240, 255});
     } else {
-        DrawText("ALL ELDER SKY-LEVIATHANS CONQUERED!", 28, 26, 14, Color{85, 245, 165, 255});
-        DrawText("Press [N] to Summon Prestige Apex Leviathan!", 28, 46, 11, Color{255, 215, 95, 255});
+        DrawText("ALL ELDER SKY-LEVIATHANS CONQUERED!", 28, 25, 14, Color{85, 245, 165, 255});
+        DrawText("Press [N] to Summon Prestige Apex Leviathan!", 28, 44, 11, Color{255, 215, 95, 255});
     }
 
     int activeAllies = 0;
     for (const auto& n : world.npcShips) {
         if (!n.isDestroyed && n.faction() == 0) activeAllies++;
     }
-    std::snprintf(buf, sizeof(buf), "Wingmen: %d | [U] Hire (200G) | [K] Crew | [H] Codex", activeAllies);
-    DrawText(buf, 28, 68, 11, Color{95, 235, 255, 255});
-    DrawText("[F6] Save Campaign  |  [F7] Load  |  [V] Sky Time", 28, 86, 10, Color{165, 195, 220, 255});
+    std::snprintf(buf, sizeof(buf), "Wingmen: %d | [Z] Order: %s",
+                  activeAllies, World::getFleetOrderName(world.currentFleetOrder));
+    DrawText(buf, 28, 63, 11, Color{95, 235, 255, 255});
+
+    std::snprintf(buf, sizeof(buf), "[T] Weather: %s | Relics [L]: %d/5",
+                  World::getWeatherName(world.currentWeather), world.unlockedRelicCount());
+    DrawText(buf, 28, 81, 11, Color{135, 240, 195, 255});
+
+    DrawText("[J] Market | [L] Relics | [K] Crew | [Y] Livery | [H] Codex", 28, 99, 10, Color{255, 215, 95, 255});
 
     // -------------------------------------------------------------------------
     // 2. Center Aim Crosshair Reticle
@@ -263,7 +284,7 @@ void HudRenderer::drawFlightHUD(
                       (world.sonarMarkTimer > 0.0f) ? world.sonarMarkTimer : world.sonarPingCooldown);
         DrawText(buf, tacX + 12, tacY + 60, 11, (world.sonarMarkTimer > 0.0f) ? Color{255, 215, 85, 255} : Color{165, 185, 205, 255});
     }
-    DrawText("[K] Crew Quartermaster | [N] Summon Boss", tacX + 12, tacY + 78, 11, Color{235, 195, 95, 255});
+    DrawText("[J] Market Ledger | [K] Crew | [Z] Fleet Order", tacX + 12, tacY + 78, 11, Color{235, 195, 95, 255});
 
     // -------------------------------------------------------------------------
     // 4. Top-Right 3D Sky-Radar & Compass Minimap
@@ -325,7 +346,7 @@ void HudRenderer::drawFlightHUD(
     }
 
     if (canDockAtPort || world.isSandboxMode) {
-        std::snprintf(buf, sizeof(buf), "OPEN 3D DRYDOCK SHIPYARD [B] (%s)",
+        std::snprintf(buf, sizeof(buf), "OPEN 3D DRYDOCK SHIPYARD [B]  |  MARKET [J] (%s)",
                       world.isSandboxMode ? "Sandbox" : nearestPortName.c_str());
         int dtw = MeasureText(buf, 13);
         int dw = dtw + 32;
@@ -369,7 +390,7 @@ TitleAction HudRenderer::drawTitleScreen(
     DrawRectangleLines(cardX, cardY, cardW, 134, Color{55, 155, 205, 190});
 
     ShipBlueprintInfo bp = ShipBlueprints::getInfo(inoutSelectedBlueprint);
-    DrawText("ACTIVE 3D FLAGSHIP BLUEPRINT:", cardX + 16, cardY + 12, 12, Color{145, 205, 245, 255});
+    DrawText("ACTIVE 3D FLAGSHIP BLUEPRINT (10 HULL CLASSES):", cardX + 16, cardY + 12, 12, Color{145, 205, 245, 255});
     DrawText(bp.name, cardX + 16, cardY + 30, 22, WHITE);
     DrawText(bp.role, cardX + 16, cardY + 56, 14, Color{255, 205, 85, 255});
     DrawText(bp.description, cardX + 16, cardY + 80, 11, Color{185, 205, 225, 255});
@@ -407,9 +428,9 @@ TitleAction HudRenderer::drawTitleScreen(
         Color tint;
     };
     const MenuBtn buttons[] = {
-        {"LAUNCH OPEN-SKY EXPEDITION (CAMPAIGN)", "Explore 14 sky-islands, mine Aetherium, recruit officers, and hunt Elder Leviathans.", TitleAction::StartCampaign, Color{28, 135, 185, 245}},
-        {"3D DRYDOCK SHIPYARD & SANDBOX", "Unlimited Gold & Aetherium! Build custom 3D voxel airships with 16 block types.", TitleAction::StartDrydockSandbox, Color{35, 145, 105, 245}},
-        {"COLOSSAL LEVIATHAN HUNT GAUNTLET", "Immediate boss encounter against multi-segmented Sky-Leviathans with Harpoon Winches.", TitleAction::StartLeviathanHunt, Color{165, 75, 55, 245}},
+        {"LAUNCH OPEN-SKY EXPEDITION (CAMPAIGN)", "Explore 14 sky-islands, trade commodities, command wingmen & hunt 6 Elder Leviathans.", TitleAction::StartCampaign, Color{28, 135, 185, 245}},
+        {"3D DRYDOCK SHIPYARD & SANDBOX", "Unlimited Gold & Aetherium! Build custom 3D voxel airships with 20 functional block types.", TitleAction::StartDrydockSandbox, Color{35, 145, 105, 245}},
+        {"COLOSSAL LEVIATHAN HUNT GAUNTLET", "Immediate boss encounter against multi-segmented Sky-Leviathans with Shock Harpoons.", TitleAction::StartLeviathanHunt, Color{165, 75, 55, 245}},
         {"SKY-ARMADA FLEET SKIRMISH", "Large-scale 3D broadside fleet battle alongside AI wingmen against a Corsair Armada.", TitleAction::StartFleetSkirmish, Color{115, 75, 165, 245}}
     };
 
@@ -445,7 +466,7 @@ TitleAction HudRenderer::drawTitleScreen(
     std::snprintf(statBuf, sizeof(statBuf), "LIVE 3D TURNTABLE: %s", bp.name);
     DrawText(statBuf, badgeX + 16, badgeY + 14, 14, Color{85, 235, 255, 255});
 
-    const char* footer = "[W/S] Throttle | [A/D] Rudder | [SHIFT] Boost | [LMB] Guns | [RMB] Harpoon | [K] Crew | [B] Drydock";
+    const char* footer = "[W/S] Throttle | [A/D] Rudder | [SHIFT] Boost | [LMB] Guns | [RMB] Harpoon | [J] Market | [B] Drydock";
     DrawText(footer, panelX + 26, panelY + panelH - 28, 11, Color{155, 195, 225, 255});
 
     return action;
@@ -561,8 +582,8 @@ void HudRenderer::drawCrewModal(World& world, int screenW, int screenH, bool& in
 
 void HudRenderer::drawCodexModal(int screenW, int screenH, bool& inoutShowCodex) {
     DrawRectangle(0, 0, screenW, screenH, Color{6, 10, 18, 215});
-    int w = 860;
-    int h = 560;
+    int w = 880;
+    int h = 580;
     int mx = (screenW - w) / 2;
     int my = (screenH - h) / 2;
 
@@ -575,28 +596,28 @@ void HudRenderer::drawCodexModal(int screenW, int screenH, bool& inoutShowCodex)
     // Left Column: 3D Airship Engineering & Physics
     int col1 = mx + 26;
     DrawText("1. 3D VOXEL BUOYANCY, SHIELDS & STRUCTURAL FRACTURE", col1, my + 64, 15, Color{255, 205, 75, 255});
-    DrawText("- 16 Block Types: Timber, Ironclad, Orichalcum, Shield Domes, Plasma Lances & Ramjets.", col1, my + 90, 12, WHITE);
-    DrawText("- Center of Lift (CoL) vs Center of Mass (CoM) governs roll & pitch trim.", col1, my + 110, 12, WHITE);
-    DrawText("- Aether Shield Dome Projectors absorb incoming projectiles before hull damage!", col1, my + 130, 12, Color{95, 235, 255, 255});
-    DrawText("- 3D BFS Connectivity Solver: If enemy fire severs the struts connecting", col1, my + 150, 12, Color{255, 165, 85, 255});
-    DrawText("  a wing or pontoon to the Command Bridge, the entire wing detaches", col1, my + 168, 12, Color{255, 165, 85, 255});
-    DrawText("  and tumbles into the clouds below as falling 3D debris!", col1, my + 186, 12, Color{255, 165, 85, 255});
+    DrawText("- 20 Block Types: Timber, Ironclad, Orichalcum, Shield Domes, Homing Torpedoes,", col1, my + 90, 12, WHITE);
+    DrawText("  Shock Harpoons, Chrono-Aether Capacitors & Incendiary Flame Mortars.", col1, my + 108, 12, WHITE);
+    DrawText("- Aether Shield Dome Projectors absorb incoming projectiles before hull damage!", col1, my + 128, 12, Color{95, 235, 255, 255});
+    DrawText("- 3D BFS Connectivity Solver: If enemy fire severs the struts connecting", col1, my + 148, 12, Color{255, 165, 85, 255});
+    DrawText("  a wing or pontoon to the Command Bridge, the entire wing detaches", col1, my + 166, 12, Color{255, 165, 85, 255});
+    DrawText("  and tumbles into the clouds below as falling 3D debris!", col1, my + 184, 12, Color{255, 165, 85, 255});
 
-    DrawText("2. COLOSSAL SKY-LEVIATHAN HUNTING & HARPOONS", col1, my + 220, 15, Color{255, 205, 75, 255});
-    DrawText("- Right-Click [RMB] fires barbed Steam Harpoon Winch cables into", col1, my + 246, 12, WHITE);
-    DrawText("  any segment of a Leviathan OR an enemy Pirate Airship!", col1, my + 264, 12, WHITE);
-    DrawText("- Hold [R] to reel the winch cable in; press [F] to cut cables if", col1, my + 284, 12, Color{95, 240, 185, 255});
-    DrawText("  tension exceeds 95% to avoid snapping steel cables!", col1, my + 302, 12, Color{95, 240, 185, 255});
-    DrawText("- Shatter outer carapace armor plates with broadsides [LMB] to expose", col1, my + 322, 12, Color{255, 125, 125, 255});
-    DrawText("  glowing inner Aether Core weak spots for 2.4x CRITICAL DAMAGE!", col1, my + 340, 12, Color{255, 125, 125, 255});
+    DrawText("2. 6 COLOSSAL SKY-LEVIATHANS & SHOCK HARPOONS", col1, my + 218, 15, Color{255, 205, 75, 255});
+    DrawText("- Right-Click [RMB] fires barbed Steam or Shock Harpoon cables into", col1, my + 244, 12, WHITE);
+    DrawText("  any segment of a Leviathan OR an enemy Pirate Airship!", col1, my + 262, 12, WHITE);
+    DrawText("- Shock Harpoons pulse continuous electric DPS down the cable while", col1, my + 282, 12, Color{95, 240, 185, 255});
+    DrawText("  Homing Torpedo Pods actively steer toward Leviathans and Corsairs!", col1, my + 300, 12, Color{95, 240, 185, 255});
+    DrawText("- Shatter outer carapace armor plates with broadsides [LMB] to expose", col1, my + 320, 12, Color{255, 125, 125, 255});
+    DrawText("  glowing inner Aether Core weak spots for 2.4x CRITICAL DAMAGE!", col1, my + 338, 12, Color{255, 125, 125, 255});
 
-    DrawText("3. CREW QUARTERMASTER & TACTICAL SHIP ABILITIES", col1, my + 374, 15, Color{255, 205, 75, 255});
-    DrawText("- Press [K] to open the Crew Quartermaster and promote 5 Specialist Officers.", col1, my + 400, 12, WHITE);
-    DrawText("- Hold [LEFT SHIFT] for Aether Overdrive Boost; [X] for Damage Control;", col1, my + 418, 12, Color{95, 245, 175, 255});
-    DrawText("  [C] for Acoustic Sonar Ping (+25% target damage); [N] to summon bosses.", col1, my + 438, 12, Color{95, 235, 255, 255});
+    DrawText("3. COMMODITY MARKET, FLEET ORDERS & WEATHER", col1, my + 372, 15, Color{255, 205, 75, 255});
+    DrawText("- Press [J] to open the Island Commodity Exchange & Bounty Ledger.", col1, my + 398, 12, WHITE);
+    DrawText("- Press [Z] to issue Squadron Orders to Allied Wingmen; [T] for Weather;", col1, my + 416, 12, Color{95, 245, 175, 255});
+    DrawText("  [K] for Crew Quartermaster; [X] Damage Control; [C] Acoustic Sonar.", col1, my + 436, 12, Color{95, 235, 255, 255});
 
     // Right Column: Complete Keybind Reference
-    int col2 = mx + 465;
+    int col2 = mx + 475;
     DrawLine(col2 - 18, my + 60, col2 - 18, my + h - 24, Color{45, 95, 135, 160});
     DrawText("FLIGHT & COMBAT CONTROLS", col2, my + 64, 15, Color{85, 235, 255, 255});
     DrawText("[W / S] & [A / D]        : Turbine Throttle & Rudder Yaw", col2, my + 90, 12, WHITE);
@@ -605,20 +626,216 @@ void HudRenderer::drawCodexModal(int screenW, int screenH, bool& inoutShowCodex)
     DrawText("[Hold LMB] / [Click RMB] : Fire Artillery / Launch Harpoon Winch", col2, my + 150, 12, Color{255, 215, 95, 255});
     DrawText("[Hold R] / [F]           : Reel In Harpoon Winch / Cut Cables", col2, my + 170, 12, Color{95, 240, 185, 255});
     DrawText("[X] / [C]                : Emergency Damage Control / Sonar Ping", col2, my + 190, 12, Color{95, 245, 175, 255});
-    DrawText("[K] / [U]                : Crew Quartermaster / Hire Wingman (200G)", col2, my + 210, 12, Color{135, 225, 255, 255});
-    DrawText("[N] / [V]                : Summon Apex Leviathan / Sky Atmosphere", col2, my + 230, 12, WHITE);
-    DrawText("[TAB] / [B]              : Walk on Deck / Open 3D Drydock Shipyard", col2, my + 250, 12, WHITE);
+    DrawText("[J] / [K] / [U]          : Trade & Contracts / Crew / Hire Wingman", col2, my + 210, 12, Color{135, 225, 255, 255});
+    DrawText("[Z] / [T] / [V]          : Squadron Order / Weather / Sky Time", col2, my + 230, 12, Color{95, 245, 185, 255});
+    DrawText("[N] / [TAB] / [B]        : Summon Boss / Walk on Deck / Drydock", col2, my + 250, 12, WHITE);
     DrawText("[F6] / [F7]              : Quick Save / Quick Load Full Campaign", col2, my + 270, 12, Color{255, 205, 95, 255});
     DrawText("[M] / [P] / [F3]         : World Map / AI Autopilot / Perf HUD", col2, my + 290, 12, WHITE);
 
-    DrawText("3D DRYDOCK SHIPYARD CONTROLS", col2, my + 336, 15, Color{85, 235, 255, 255});
+    DrawText("3D DRYDOCK SHIPYARD CONTROLS (20 BLOCKS)", col2, my + 336, 15, Color{85, 235, 255, 255});
     DrawText("[LMB] / [RMB]            : Place 3D Block / Remove & Refund Block", col2, my + 364, 12, WHITE);
-    DrawText("[1..0, -, =, [, ], ;, '] : Select Block from 16-Slot Palette", col2, my + 386, 12, WHITE);
-    DrawText("[R] / [M] / [G]          : Rotate Block / X-Mirror / CoM Gizmos", col2, my + 408, 12, Color{95, 240, 185, 255});
-    DrawText("[F5] / [F9]              : Save / Load Custom Ship (custom_ship.aeth)", col2, my + 430, 12, Color{255, 215, 95, 255});
+    DrawText("[1..0, -, =, [, ], ;, '] : Select Block Slots 1..16", col2, my + 386, 12, WHITE);
+    DrawText("[, . / \\]               : Torpedo, Shock Harpoon, Capacitor, Mortar", col2, my + 406, 12, Color{255, 215, 95, 255});
+    DrawText("[R] / [M] / [G]          : Rotate Block / X-Mirror / CoM Gizmos", col2, my + 428, 12, Color{95, 240, 185, 255});
+    DrawText("[F5] / [F9]              : Save / Load Custom Ship (custom_ship.aeth)", col2, my + 450, 12, Color{255, 215, 95, 255});
 
     if (IsKeyPressed(KEY_ESCAPE)) {
         inoutShowCodex = false;
+    }
+}
+
+void HudRenderer::drawTradeAndContractsModal(
+    World& world,
+    int screenW,
+    int screenH,
+    bool& inoutShowLedger
+) {
+    DrawRectangle(0, 0, screenW, screenH, Color{6, 10, 18, 220});
+    int w = 960;
+    int h = 580;
+    int mx = (screenW - w) / 2;
+    int my = (screenH - h) / 2;
+
+    DrawRectangle(mx, my, w, h, Color{11, 19, 32, 248});
+    DrawRectangleLinesEx({static_cast<float>(mx), static_cast<float>(my), static_cast<float>(w), static_cast<float>(h)}, 2.0f, Color{75, 205, 255, 230});
+
+    DrawText("SKY-GUILD BOUNTY LEDGER & ISLAND COMMODITY EXCHANGE [J / ESC to Close]", mx + 24, my + 16, 18, Color{85, 235, 255, 255});
+
+    char buf[180];
+    std::snprintf(buf, sizeof(buf), "Treasury: %d Gold  |  %d Aetherium  |  Cargo Hold: %d / %d Crates  |  Squadron Order [Z]: %s",
+                  world.playerGold, world.playerAether, world.totalCargoUnits(), world.maxCargoCapacity(),
+                  World::getFleetOrderName(world.currentFleetOrder));
+    DrawText(buf, mx + 24, my + 42, 13, Color{255, 215, 85, 255});
+    DrawLine(mx + 24, my + 64, mx + w - 24, my + 64, Color{55, 145, 195, 180});
+
+    Vector2 mouse = GetMousePosition();
+
+    // Find nearest Sky-Island for Commodity Trading
+    int nearestIdx = -1;
+    float bestDist = 1e30f;
+    for (size_t i = 0; i < world.archipelago.islands.size(); ++i) {
+        float d = (world.archipelago.islands[i].position - world.playerShip.position).length();
+        if (d < bestDist) {
+            bestDist = d;
+            nearestIdx = static_cast<int>(i);
+        }
+    }
+
+    // LEFT COLUMN: Island Commodity Exchange
+    int leftX = mx + 24;
+    int leftW = 445;
+    DrawText("ISLAND COMMODITY EXCHANGE", leftX, my + 76, 15, Color{95, 240, 185, 255});
+
+    if (nearestIdx >= 0) {
+        const SkyIsland& isl = world.archipelago.islands[static_cast<size_t>(nearestIdx)];
+        bool inRange = world.isSandboxMode || (bestDist <= isl.radius + 260.0f);
+        std::snprintf(buf, sizeof(buf), "Nearest Port: %s (%.0fm) — %s",
+                      isl.name.c_str(), bestDist, inRange ? "DOCKED / IN TRADE RANGE" : "FLY CLOSER TO BUY/SELL");
+        DrawText(buf, leftX, my + 98, 12, inRange ? Color{85, 245, 165, 255} : Color{255, 145, 95, 255});
+
+        const auto& cSpecs = Archipelago::getCommoditySpecs();
+        for (int c = 0; c < kCommodityCount; ++c) {
+            int cardY = my + 122 + c * 104;
+            Rectangle card{static_cast<float>(leftX), static_cast<float>(cardY), static_cast<float>(leftW), 94.0f};
+            DrawRectangleRec(card, Color{16, 28, 46, 245});
+            DrawRectangleLinesEx(card, 1.2f, Color{55, 145, 195, 185});
+
+            int localPrice = isl.marketPrices[static_cast<size_t>(c)];
+            int basePrice = cSpecs[static_cast<size_t>(c)].basePrice;
+            int owned = world.playerCargo[static_cast<size_t>(c)];
+
+            const char* trendTag = (localPrice < basePrice - 8)
+                ? "LOW PRICE (EXPORT SURPLUS)"
+                : ((localPrice > basePrice + 8) ? "HIGH DEMAND (PREMIUM)" : "STANDARD MARKET RATE");
+            Color trendCol = (localPrice < basePrice - 8)
+                ? Color{85, 245, 155, 255}
+                : ((localPrice > basePrice + 8) ? Color{255, 205, 75, 255} : Color{185, 205, 225, 255});
+
+            DrawText(cSpecs[static_cast<size_t>(c)].name, static_cast<int>(card.x + 12), static_cast<int>(card.y + 10), 14, WHITE);
+            DrawText(trendTag, static_cast<int>(card.x + 12), static_cast<int>(card.y + 30), 11, trendCol);
+            DrawText(cSpecs[static_cast<size_t>(c)].unitDesc, static_cast<int>(card.x + 12), static_cast<int>(card.y + 48), 10, Color{170, 195, 215, 255});
+
+            std::snprintf(buf, sizeof(buf), "Port Price: %dG (Base %dG)  |  In Cargo: %d", localPrice, basePrice, owned);
+            DrawText(buf, static_cast<int>(card.x + 12), static_cast<int>(card.y + 68), 12, Color{255, 215, 95, 255});
+
+            // BUY & SELL Buttons
+            Rectangle buyBtn{card.x + card.width - 144.0f, card.y + 12.0f, 64.0f, 32.0f};
+            Rectangle sellBtn{card.x + card.width - 72.0f, card.y + 12.0f, 64.0f, 32.0f};
+            bool hovBuy = CheckCollisionPointRec(mouse, buyBtn);
+            bool hovSell = CheckCollisionPointRec(mouse, sellBtn);
+
+            DrawRectangleRec(buyBtn, (inRange && hovBuy) ? Color{45, 165, 115, 255} : Color{26, 95, 68, 235});
+            DrawRectangleLinesEx(buyBtn, 1.2f, Color{95, 240, 175, 220});
+            DrawText("BUY 1", static_cast<int>(buyBtn.x + 13), static_cast<int>(buyBtn.y + 10), 12, WHITE);
+
+            DrawRectangleRec(sellBtn, (inRange && owned > 0 && hovSell) ? Color{185, 125, 45, 255} : Color{95, 65, 28, 235});
+            DrawRectangleLinesEx(sellBtn, 1.2f, Color{255, 205, 95, 220});
+            DrawText("SELL 1", static_cast<int>(sellBtn.x + 11), static_cast<int>(sellBtn.y + 10), 12, WHITE);
+
+            if (hovBuy && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                world.buyCommodity(c, 1);
+            }
+            if (hovSell && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                world.sellCommodity(c, 1);
+            }
+        }
+    }
+
+    // RIGHT COLUMN: 6 Colossal Sky-Leviathan Guild Bounty Contracts
+    int rightX = mx + 490;
+    int rightW = 445;
+    DrawLine(rightX - 10, my + 72, rightX - 10, my + h - 20, Color{45, 95, 135, 160});
+    DrawText("SKY-GUILD ELDER LEVIATHAN BOUNTIES (6 SPECIES)", rightX, my + 76, 15, Color{255, 205, 75, 255});
+
+    int numContracts = static_cast<int>(world.contracts.size());
+    for (int i = 0; i < numContracts; ++i) {
+        const BountyContract& bc = world.contracts[static_cast<size_t>(i)];
+        int cardY = my + 104 + i * 74;
+        Rectangle card{static_cast<float>(rightX), static_cast<float>(cardY), static_cast<float>(rightW), 66.0f};
+        DrawRectangleRec(card, bc.completed ? Color{18, 42, 34, 240} : Color{22, 28, 46, 245});
+        DrawRectangleLinesEx(card, 1.2f, bc.completed ? Color{75, 235, 155, 220} : Color{225, 145, 75, 190});
+
+        DrawText(bc.title.c_str(), static_cast<int>(card.x + 12), static_cast<int>(card.y + 8), 13, WHITE);
+        std::snprintf(buf, sizeof(buf), "Target: %s", bc.targetName.c_str());
+        DrawText(buf, static_cast<int>(card.x + 12), static_cast<int>(card.y + 27), 11, Color{185, 215, 240, 255});
+
+        std::snprintf(buf, sizeof(buf), "Reward: +%d Gold, +%d Aetherium, +2 Ambergris", bc.rewardGold, bc.rewardAether);
+        DrawText(buf, static_cast<int>(card.x + 12), static_cast<int>(card.y + 45), 11, Color{255, 215, 85, 255});
+
+        const char* statusLbl = bc.completed ? "CLAIMED" : "ACTIVE";
+        Color statusCol = bc.completed ? Color{85, 245, 165, 255} : Color{255, 165, 65, 255};
+        DrawText(statusLbl, static_cast<int>(card.x + card.width - 78), static_cast<int>(card.y + 12), 12, statusCol);
+    }
+
+    if (IsKeyPressed(KEY_J) || IsKeyPressed(KEY_ESCAPE)) {
+        inoutShowLedger = false;
+    }
+}
+
+void HudRenderer::drawRelicVaultModal(
+    World& world,
+    int screenW,
+    int screenH,
+    bool& inoutShowRelics
+) {
+    DrawRectangle(0, 0, screenW, screenH, Color{6, 10, 18, 220});
+    int w = 820;
+    int h = 540;
+    int mx = (screenW - w) / 2;
+    int my = (screenH - h) / 2;
+
+    DrawRectangle(mx, my, w, h, Color{11, 19, 32, 248});
+    DrawRectangleLinesEx({static_cast<float>(mx), static_cast<float>(my), static_cast<float>(w), static_cast<float>(h)}, 2.0f, Color{235, 185, 65, 230});
+
+    DrawText("ANCIENT AETHER-RELIC VAULT & CITADEL LIBERATION [L / ESC to Close]", mx + 24, my + 18, 17, Color{255, 215, 85, 255});
+
+    char buf[180];
+    std::snprintf(buf, sizeof(buf), "Treasury: %d Gold  |  %d Aetherium  |  Awakened Relics: %d / 5  |  Citadels Liberated: %d",
+                  world.playerGold, world.playerAether, world.unlockedRelicCount(), world.citadelsLiberatedStat);
+    DrawText(buf, mx + 24, my + 44, 13, Color{95, 240, 185, 255});
+    DrawLine(mx + 24, my + 68, mx + w - 24, my + 68, Color{185, 145, 55, 180});
+
+    const auto& rSpecs = World::getRelicSpecs();
+    Vector2 mouse = GetMousePosition();
+
+    for (int i = 0; i < kRelicCount; ++i) {
+        int cardY = my + 82 + i * 84;
+        Rectangle card{static_cast<float>(mx + 24), static_cast<float>(cardY), static_cast<float>(w - 48), 74.0f};
+        bool awakened = world.unlockedRelics[static_cast<size_t>(i)];
+
+        DrawRectangleRec(card, awakened ? Color{22, 42, 36, 245} : Color{16, 26, 44, 245});
+        DrawRectangleLinesEx(card, 1.3f, awakened ? Color{85, 245, 175, 230} : Color{195, 155, 65, 190});
+
+        std::snprintf(buf, sizeof(buf), "%d. %s  (%s)",
+                      i + 1, rSpecs[static_cast<size_t>(i)].name, rSpecs[static_cast<size_t>(i)].originLore);
+        DrawText(buf, static_cast<int>(card.x + 16), static_cast<int>(card.y + 12), 15,
+                 awakened ? Color{95, 255, 185, 255} : Color{255, 215, 95, 255});
+
+        DrawText(rSpecs[static_cast<size_t>(i)].bonusDesc, static_cast<int>(card.x + 16), static_cast<int>(card.y + 38), 12, Color{205, 225, 245, 255});
+
+        Rectangle btn{card.x + card.width - 205.0f, card.y + 17.0f, 190.0f, 40.0f};
+        bool hover = CheckCollisionPointRec(mouse, btn);
+
+        if (!awakened) {
+            int gCost = rSpecs[static_cast<size_t>(i)].goldCost;
+            int aCost = rSpecs[static_cast<size_t>(i)].aetherCost;
+            bool canAfford = world.isSandboxMode || (world.playerGold >= gCost && world.playerAether >= aCost);
+            DrawRectangleRec(btn, (hover && canAfford) ? Color{195, 135, 45, 255} : (canAfford ? Color{135, 92, 32, 240} : Color{45, 55, 68, 220}));
+            DrawRectangleLinesEx(btn, 1.5f, canAfford ? Color{255, 215, 95, 255} : Color{110, 120, 135, 180});
+            std::snprintf(buf, sizeof(buf), "AWAKEN (%dG + %dAe)", gCost, aCost);
+            DrawText(buf, static_cast<int>(btn.x + 14), static_cast<int>(btn.y + 13), 12, WHITE);
+            if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                world.unlockRelic(i);
+            }
+        } else {
+            DrawRectangleRec(btn, Color{28, 105, 78, 230});
+            DrawRectangleLinesEx(btn, 1.5f, Color{95, 255, 185, 255});
+            DrawText("RELIC AWAKENED", static_cast<int>(btn.x + 34), static_cast<int>(btn.y + 13), 13, Color{95, 255, 185, 255});
+        }
+    }
+
+    if (IsKeyPressed(KEY_L) || IsKeyPressed(KEY_ESCAPE)) {
+        inoutShowRelics = false;
     }
 }
 

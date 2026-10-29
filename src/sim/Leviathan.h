@@ -11,7 +11,9 @@ enum class LeviathanSpecies {
     AzureSkyWhale = 0,
     CrimsonStormWyrm = 1,
     ObsidianDreadManta = 2,
-    MaelstromSovereign = 3
+    MaelstromSovereign = 3,
+    GlacialCryoKraken = 4,
+    SolarPhoenixSerpent = 5
 };
 
 enum class LeviathanState {

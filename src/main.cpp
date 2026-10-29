@@ -191,6 +191,8 @@ int main(int argc, char** argv) {
     bool showWorldMap = false;
     bool showCrewModal = false;
     bool showCodex = false;
+    bool showLedgerModal = false;
+    bool showRelicsModal = false;
 
     float totalElapsed = 0.0f;
     float physicsAccumulator = 0.0f;
@@ -250,20 +252,37 @@ int main(int argc, char** argv) {
             if (IsKeyPressed(KEY_P)) {
                 world.playerAutopilot = !world.playerAutopilot;
             }
+            if (IsKeyPressed(KEY_Y)) {
+                world.cyclePlayerLivery();
+            }
             if (IsKeyPressed(KEY_TAB)) {
                 world.isPlayerWalkingOnDeck = !world.isPlayerWalkingOnDeck;
             }
             if (IsKeyPressed(KEY_M)) {
                 showWorldMap = !showWorldMap;
-                if (showWorldMap) { showCrewModal = false; showCodex = false; }
+                if (showWorldMap) { showCrewModal = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; }
             }
             if (IsKeyPressed(KEY_K)) {
                 showCrewModal = !showCrewModal;
-                if (showCrewModal) { showWorldMap = false; showCodex = false; }
+                if (showCrewModal) { showWorldMap = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; }
+            }
+            if (IsKeyPressed(KEY_J)) {
+                showLedgerModal = !showLedgerModal;
+                if (showLedgerModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showRelicsModal = false; }
+            }
+            if (IsKeyPressed(KEY_L)) {
+                showRelicsModal = !showRelicsModal;
+                if (showRelicsModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showLedgerModal = false; }
             }
             if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_F1)) {
                 showCodex = !showCodex;
-                if (showCodex) { showWorldMap = false; showCrewModal = false; }
+                if (showCodex) { showWorldMap = false; showCrewModal = false; showLedgerModal = false; showRelicsModal = false; }
+            }
+            if (IsKeyPressed(KEY_Z)) {
+                world.cycleFleetOrder();
+            }
+            if (IsKeyPressed(KEY_T)) {
+                world.cycleWeatherState();
             }
             if (IsKeyPressed(KEY_U)) {
                 world.hireAlliedWingman();
@@ -291,7 +310,7 @@ int main(int argc, char** argv) {
             }
 
             // Player Manual Flight / Deck Controls
-            if (!world.playerAutopilot && !showWorldMap && !showCrewModal && !showCodex) {
+            if (!world.playerAutopilot && !showWorldMap && !showCrewModal && !showCodex && !showLedgerModal && !showRelicsModal) {
                 if (world.isPlayerWalkingOnDeck) {
                     float fwd = 0.0f, right = 0.0f;
                     if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) fwd += 1.0f;
@@ -450,6 +469,12 @@ int main(int argc, char** argv) {
             }
             if (showCrewModal) {
                 hudRenderer.drawCrewModal(world, screenW, screenH, showCrewModal);
+            }
+            if (showLedgerModal) {
+                hudRenderer.drawTradeAndContractsModal(world, screenW, screenH, showLedgerModal);
+            }
+            if (showRelicsModal) {
+                hudRenderer.drawRelicVaultModal(world, screenW, screenH, showRelicsModal);
             }
             if (showCodex) {
                 hudRenderer.drawCodexModal(screenW, screenH, showCodex);

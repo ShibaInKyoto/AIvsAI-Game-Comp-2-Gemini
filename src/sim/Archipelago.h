@@ -4,6 +4,7 @@
 #include "sim/BlockRegistry.h"
 #include <vector>
 #include <string>
+#include <array>
 
 namespace aethernaut {
 
@@ -24,6 +25,24 @@ struct AetherCrystalNode {
     bool harvested = false;
 };
 
+constexpr int kCommodityCount = 4;
+
+struct CommoditySpec {
+    const char* name;
+    const char* unitDesc;
+    int basePrice;
+};
+
+struct SkyBastionTurret {
+    Vec3 worldPos;
+    float radius = 5.5f;
+    float hp = 320.0f;
+    float maxHp = 320.0f;
+    float reloadTimer = 2.0f;
+    float barrelYaw = 0.0f;
+    bool destroyed = false;
+};
+
 struct SkyIsland {
     int id = 0;
     std::string name;
@@ -34,10 +53,14 @@ struct SkyIsland {
     float spireHeight = 28.0f;
     bool hasDrydockPort = false;
     bool hasLighthouse = false;
+    bool isFortifiedStronghold = false;
+    bool isLiberated = false;
     bool discovered = false;
     ColorRGB topColor{78, 155, 88};
     ColorRGB rockColor{110, 105, 98};
     std::vector<AetherCrystalNode> crystals;
+    std::vector<SkyBastionTurret> bastionTurrets;
+    std::array<int, kCommodityCount> marketPrices{{25, 45, 85, 160}};
 };
 
 struct SalvageCrate {
@@ -61,6 +84,8 @@ struct StormCell {
 
 class Archipelago {
 public:
+    static const std::array<CommoditySpec, kCommodityCount>& getCommoditySpecs();
+
     void generate(uint64_t seed);
     void update(float dt);
 

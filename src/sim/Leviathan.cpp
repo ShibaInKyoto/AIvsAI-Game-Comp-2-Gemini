@@ -64,6 +64,30 @@ Leviathan::Leviathan(
             bodyColor = {28, 38, 52};
             coreColor = {255, 75, 125};
             break;
+        case LeviathanSpecies::GlacialCryoKraken:
+            name_ = "Architeuthis Borealis";
+            title_ = "Glacial Cryo-Kraken";
+            numSegments = 22;
+            baseRadius = 7.4f;
+            baseArmor = 285.0f;
+            maxTotalHp = 5200.0f;
+            goldBounty = 1250;
+            aetherBounty = 45;
+            bodyColor = {48, 138, 195};
+            coreColor = {145, 245, 255};
+            break;
+        case LeviathanSpecies::SolarPhoenixSerpent:
+            name_ = "Ignis Quetzal";
+            title_ = "Solar Phoenix-Serpent";
+            numSegments = 26;
+            baseRadius = 6.6f;
+            baseArmor = 295.0f;
+            maxTotalHp = 5800.0f;
+            goldBounty = 1500;
+            aetherBounty = 55;
+            bodyColor = {225, 95, 32};
+            coreColor = {255, 235, 85};
+            break;
     }
 
     totalHp = maxTotalHp;
@@ -84,9 +108,12 @@ Leviathan::Leviathan(
         seg.armorHp = seg.maxArmorHp;
         seg.hasWeakSpotCore = (i % 3 == 1);
 
-        if (i == 2 || i == 3) {
+        if (i == 2 || i == 3 || (species == LeviathanSpecies::GlacialCryoKraken && (i == 5 || i == 7)) ||
+            (species == LeviathanSpecies::SolarPhoenixSerpent && (i == 4 || i == 8))) {
             seg.hasLateralFins = true;
-            seg.finSpan = (species == LeviathanSpecies::ObsidianDreadManta) ? seg.radius * 4.2f : seg.radius * 2.8f;
+            seg.finSpan = (species == LeviathanSpecies::ObsidianDreadManta || species == LeviathanSpecies::SolarPhoenixSerpent)
+                ? seg.radius * 4.2f
+                : seg.radius * 3.1f;
         } else if (i == numSegments - 1) {
             seg.hasLateralFins = true; // Tail fluke
             seg.finSpan = seg.radius * 3.2f;

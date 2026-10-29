@@ -8,7 +8,7 @@ namespace aethernaut {
 
 namespace {
 
-const std::array<ShipBlueprintInfo, 7> kBlueprints = {{
+const std::array<ShipBlueprintInfo, 10> kBlueprints = {{
     {
         0, "Zephyr Sky-Cutter", "Balanced Expedition Sloop",
         "Agile single-hull sky-cutter with overhead lift envelope, bow harpoon winch, and broadside deck guns."
@@ -36,6 +36,18 @@ const std::array<ShipBlueprintInfo, 7> kBlueprints = {{
     {
         6, "Solaris-Prime", "Orichalcum Royal Battlecruiser",
         "Imperial gilded battlecruiser clad in Orichalcum Plate with 4 Solaris Plasma Lances and Aether Ramjets."
+    },
+    {
+        7, "Nemesis Torpedo Cruiser", "Guided Torpedo Stealth Frigate",
+        "High-speed hunter armed with 4 Homing Aether-Torpedo Tubes, 2 Shock-Harpoons, and Chrono-Capacitors."
+    },
+    {
+        8, "Prometheus Fire-Galleon", "Incendiary Siege Galleon",
+        "Heavy armored siege warship carrying 6 Dragonfire Siege Mortars, 2 Shock-Harpoons, and Shield Domes."
+    },
+    {
+        9, "Celestial Ark-Carrier", "Imperial Trimaran Titan",
+        "Colossal 3-hull Orichalcum trimaran flagship with Triple Shield Domes, Torpedoes, Plasma Lances & Ramjets."
     }
 }};
 
@@ -331,6 +343,170 @@ void buildSolarisBattlecruiser(Airship& s) {
     s.setBlock(0, 0, 6, BlockId::GyroRudder, 2);
 }
 
+void buildNemesisTorpedoCruiser(Airship& s) {
+    s.clearAllBlocks();
+    for (int z = -7; z <= 6; ++z) {
+        int halfW = (z <= -5 || z >= 5) ? 1 : 2;
+        for (int x = -halfW; x <= halfW; ++x) {
+            s.setBlock(x, -1, z, BlockId::IronArmor);
+            s.setBlock(x, 0, z, (std::abs(x) == halfW) ? BlockId::OrichalcumArmor : BlockId::IronArmor);
+        }
+    }
+    s.setBlock(0, 0, -2, BlockId::AetherCore);
+    s.setBlock(0, 0, +1, BlockId::AetherCore);
+    s.setBlock(-1, 1, +2, BlockId::CapacitorBank);
+    s.setBlock(+1, 1, +2, BlockId::CapacitorBank);
+    s.setBlock(0, 1, +3, BlockId::HelmBridge);
+    s.setBlock(0, 1, 0, BlockId::ShieldProjector);
+    s.setBlock(0, 1, -1, BlockId::RepairCrane);
+
+    // Outrigger Torpedo Pods & Lift Cells
+    for (int z = -4; z <= 3; ++z) {
+        s.setBlock(-3, 0, z, BlockId::IronArmor);
+        s.setBlock(+3, 0, z, BlockId::IronArmor);
+        s.setBlock(-2, 2, z, BlockId::LiftBalloon);
+        s.setBlock(0, 2, z, BlockId::LiftBalloon);
+        s.setBlock(+2, 2, z, BlockId::LiftBalloon);
+        s.setBlock(-1, 3, z, BlockId::LiftBalloon);
+        s.setBlock(+1, 3, z, BlockId::LiftBalloon);
+    }
+
+    // 4 Guided Aether-Torpedo Tubes + 2 Voltaic Shock-Harpoons
+    s.setBlock(-3, 1, -3, BlockId::TorpedoLauncher, 0);
+    s.setBlock(+3, 1, -3, BlockId::TorpedoLauncher, 0);
+    s.setBlock(-3, 1, +1, BlockId::TorpedoLauncher, 3);
+    s.setBlock(+3, 1, +1, BlockId::TorpedoLauncher, 1);
+    s.setBlock(-1, 1, -5, BlockId::ShockHarpoon, 0);
+    s.setBlock(+1, 1, -5, BlockId::ShockHarpoon, 0);
+
+    // 3 Aether-Ramjets + Dual Gyro Rudders
+    s.setBlock(-2, 0, 6, BlockId::AfterburnerJet, 2);
+    s.setBlock(0, 0, 6, BlockId::AfterburnerJet, 2);
+    s.setBlock(+2, 0, 6, BlockId::AfterburnerJet, 2);
+    s.setBlock(-1, 0, 5, BlockId::GyroRudder, 2);
+    s.setBlock(+1, 0, 5, BlockId::GyroRudder, 2);
+}
+
+void buildPrometheusFireGalleon(Airship& s) {
+    s.clearAllBlocks();
+    for (int z = -7; z <= 7; ++z) {
+        int halfW = (std::abs(z) >= 6) ? 1 : ((std::abs(z) == 5) ? 2 : 3);
+        for (int x = -halfW; x <= halfW; ++x) {
+            s.setBlock(x, -1, z, BlockId::IronArmor);
+            s.setBlock(x, 0, z, (std::abs(x) == halfW) ? BlockId::OrichalcumArmor : BlockId::WoodHull);
+        }
+    }
+    for (int z : {-3, 0, 3}) {
+        s.setBlock(0, 0, z, BlockId::AetherCore);
+    }
+    s.setBlock(0, 1, 4, BlockId::HelmBridge);
+    s.setBlock(-1, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(+1, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(-1, 1, 1, BlockId::CapacitorBank);
+    s.setBlock(+1, 1, 1, BlockId::CapacitorBank);
+    s.setBlock(0, 1, -1, BlockId::RepairCrane);
+
+    // Overhead Lift Envelope
+    for (int z = -5; z <= 4; ++z) {
+        s.setBlock(-2, 1, z, BlockId::IronArmor);
+        s.setBlock(+2, 1, z, BlockId::IronArmor);
+        for (int x = -2; x <= 2; ++x) {
+            s.setBlock(x, 2, z, BlockId::LiftBalloon);
+            s.setBlock(x, 3, z, BlockId::LiftBalloon);
+        }
+    }
+
+    // 6 Dragonfire Siege Mortars + 2 Voltaic Shock-Harpoons
+    for (int z : {-3, 0, 3}) {
+        s.setBlock(-3, 1, z, BlockId::FlameMortar, 3);
+        s.setBlock(+3, 1, z, BlockId::FlameMortar, 1);
+    }
+    s.setBlock(-1, 1, -5, BlockId::ShockHarpoon, 0);
+    s.setBlock(+1, 1, -5, BlockId::ShockHarpoon, 0);
+
+    // Propulsion
+    s.setBlock(-2, 0, 7, BlockId::SteamPropeller, 2);
+    s.setBlock(-1, 0, 7, BlockId::AfterburnerJet, 2);
+    s.setBlock(+1, 0, 7, BlockId::AfterburnerJet, 2);
+    s.setBlock(+2, 0, 7, BlockId::SteamPropeller, 2);
+    s.setBlock(0, 0, 6, BlockId::GyroRudder, 2);
+}
+
+void buildCelestialArkCarrier(Airship& s) {
+    s.clearAllBlocks();
+    // Central Royal Hull (Z = -8 .. +8, X = -2 .. +2)
+    for (int z = -8; z <= 8; ++z) {
+        int halfW = (std::abs(z) >= 7) ? 1 : 2;
+        for (int x = -halfW; x <= halfW; ++x) {
+            s.setBlock(x, -1, z, BlockId::OrichalcumArmor);
+            s.setBlock(x, 0, z, BlockId::OrichalcumArmor);
+        }
+    }
+    // Twin Outrigger Trimaran Sponsons (X = -5..-4 and +4..+5, Z = -5..+5)
+    for (int z = -5; z <= 5; ++z) {
+        for (int side : {-1, +1}) {
+            s.setBlock(side * 4, 0, z, BlockId::OrichalcumArmor);
+            s.setBlock(side * 5, 0, z, BlockId::OrichalcumArmor);
+            s.setBlock(side * 4, 1, z, BlockId::LiftBalloon);
+            s.setBlock(side * 5, 2, z, BlockId::LiftBalloon);
+            if (std::abs(z) <= 2) {
+                s.setBlock(side * 3, 0, z, BlockId::OrichalcumArmor); // Cross-wing struts
+            }
+        }
+    }
+
+    for (int z : {-4, -1, 2, 5}) {
+        s.setBlock(-1, 0, z, BlockId::AetherCore);
+        s.setBlock(+1, 0, z, BlockId::AetherCore);
+    }
+    s.setBlock(0, 1, 5, BlockId::HelmBridge);
+    s.setBlock(0, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(-1, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(+1, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(-1, 1, 1, BlockId::CapacitorBank);
+    s.setBlock(+1, 1, 1, BlockId::CapacitorBank);
+    s.setBlock(-1, 1, -1, BlockId::CapacitorBank);
+    s.setBlock(+1, 1, -1, BlockId::CapacitorBank);
+    s.setBlock(0, 1, 0, BlockId::RepairCrane);
+    s.setBlock(0, 1, -2, BlockId::RepairCrane);
+
+    // Central Lift Canopy
+    for (int z = -6; z <= 5; ++z) {
+        s.setBlock(-2, 1, z, BlockId::OrichalcumArmor);
+        s.setBlock(+2, 1, z, BlockId::OrichalcumArmor);
+        for (int x = -2; x <= 2; ++x) {
+            s.setBlock(x, 2, z, BlockId::LiftBalloon);
+            s.setBlock(x, 3, z, BlockId::LiftBalloon);
+        }
+    }
+
+    // Heavy Armament: 4 Torpedo Tubes, 4 Solaris Plasma Lances, 2 Dragonfire Mortars, 2 Shock-Harpoons
+    s.setBlock(-5, 1, -4, BlockId::TorpedoLauncher, 0);
+    s.setBlock(+5, 1, -4, BlockId::TorpedoLauncher, 0);
+    s.setBlock(-5, 1, +2, BlockId::TorpedoLauncher, 3);
+    s.setBlock(+5, 1, +2, BlockId::TorpedoLauncher, 1);
+
+    s.setBlock(-5, 1, -1, BlockId::PlasmaLance, 3);
+    s.setBlock(+5, 1, -1, BlockId::PlasmaLance, 1);
+    s.setBlock(-2, 1, -4, BlockId::PlasmaLance, 3);
+    s.setBlock(+2, 1, -4, BlockId::PlasmaLance, 1);
+
+    s.setBlock(-5, 1, +4, BlockId::FlameMortar, 3);
+    s.setBlock(+5, 1, +4, BlockId::FlameMortar, 1);
+
+    s.setBlock(-1, 1, -6, BlockId::ShockHarpoon, 0);
+    s.setBlock(+1, 1, -6, BlockId::ShockHarpoon, 0);
+
+    // 4 Aether-Ramjets + 2 Sponson Turbines
+    s.setBlock(-2, 0, 8, BlockId::AfterburnerJet, 2);
+    s.setBlock(-1, 0, 8, BlockId::AfterburnerJet, 2);
+    s.setBlock(+1, 0, 8, BlockId::AfterburnerJet, 2);
+    s.setBlock(+2, 0, 8, BlockId::AfterburnerJet, 2);
+    s.setBlock(-4, 0, 6, BlockId::SteamPropeller, 2);
+    s.setBlock(+4, 0, 6, BlockId::SteamPropeller, 2);
+    s.setBlock(0, 0, 7, BlockId::GyroRudder, 2);
+}
+
 } // namespace
 
 int ShipBlueprints::count() {
@@ -353,6 +529,9 @@ void ShipBlueprints::applyBlueprint(Airship& ship, int index) {
         case 4: buildVoltaicDreadnought(ship); break;
         case 5: buildCorsairRaider(ship); break;
         case 6: buildSolarisBattlecruiser(ship); break;
+        case 7: buildNemesisTorpedoCruiser(ship); break;
+        case 8: buildPrometheusFireGalleon(ship); break;
+        case 9: buildCelestialArkCarrier(ship); break;
         default: buildZephyrSloop(ship); break;
     }
     ship.recomputeMetrics();
@@ -367,6 +546,7 @@ bool ShipBlueprints::saveCustomBlueprint(const Airship& ship, const std::string&
     }
     out << "AETHERNAUT_SHIP_V1\n";
     out << "NAME " << ship.name() << "\n";
+    out << "LIVERY " << ship.hullLiveryId << "\n";
     for (int gz = Airship::minZ(); gz <= Airship::maxZ(); ++gz) {
         for (int gy = Airship::minY(); gy <= Airship::maxY(); ++gy) {
             for (int gx = Airship::minX(); gx <= Airship::maxX(); ++gx) {
@@ -407,6 +587,11 @@ bool ShipBlueprints::loadCustomBlueprint(Airship& ship, const std::string& filep
             std::getline(iss >> std::ws, rest);
             if (!rest.empty()) {
                 ship.setName(rest);
+            }
+        } else if (tag == "LIVERY") {
+            int liv = 0;
+            if (iss >> liv) {
+                ship.hullLiveryId = std::clamp(liv, 0, 5);
             }
         } else if (tag == "BLK") {
             int gx = 0, gy = 0, gz = 0, bid = 0, orient = 0;

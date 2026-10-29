@@ -168,12 +168,17 @@ public:
     int propellerCount = 0;
     int liftCellCount = 0;
     int shieldProjectorCount = 0;
+    int capacitorCount = 0;
     Vec3 centerOfMassLocal{0.0f, 0.0f, 0.0f};
     Vec3 centerOfLiftLocal{0.0f, 0.0f, 0.0f};
     float boundingRadius = 18.0f;
     float propellerSpinAngle = 0.0f;
+    int hullLiveryId = 0; // 0..5 Custom Fleet Livery Paint Themes
     bool isSinking = false;
     bool isDestroyed = false;
+
+    void cycleHullLivery() { hullLiveryId = (hullLiveryId + 1) % 6; }
+    static const char* getHullLiveryName(int liveryId);
 
     Quat orientationQuat() const {
         return Quat::fromEuler(pitch, yaw, roll);

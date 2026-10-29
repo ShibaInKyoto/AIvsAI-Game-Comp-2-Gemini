@@ -4,6 +4,38 @@
 
 namespace aethernaut {
 
+namespace {
+
+const std::array<CommoditySpec, kCommodityCount> kCommoditySpecs = {{
+    {"Sky-Oak Timber", "Treated airframe lumber (Cheap in Azure Havens, Priced High in Crags)", 25},
+    {"Ironclad Ore", "Heavy smelter iron & rivets (Cheap in Obsidian Crags, High in Havens)", 45},
+    {"Refined Aether-Spice", "Concentrated wind-steppe propellant (Cheap in Steppes, High in Reefs)", 85},
+    {"Leviathan Ambergris", "Rare abyssal bio-crystal oil (Cheap in Crystal Reefs, High in Capitals)", 160}
+}};
+
+std::array<int, kCommodityCount> computeIslandPrices(SkyBiome biome, int islandId) {
+    int jitter = (islandId * 7) % 5 - 2;
+    switch (biome) {
+        case SkyBiome::AzureHaven:
+            return {16 + jitter, 68 + jitter, 92 + jitter, 245 + jitter * 2};
+        case SkyBiome::WindmillSteppe:
+            return {32 + jitter, 62 + jitter, 52 + jitter, 195 + jitter * 2};
+        case SkyBiome::CrystalReef:
+            return {36 + jitter, 50 + jitter, 132 + jitter * 2, 105 + jitter * 2};
+        case SkyBiome::ObsidianCrag:
+            return {42 + jitter, 26 + jitter, 98 + jitter, 210 + jitter * 2};
+        case SkyBiome::MaelstromEye:
+            return {46 + jitter, 38 + jitter, 142 + jitter * 2, 265 + jitter * 2};
+    }
+    return {25, 45, 85, 160};
+}
+
+} // namespace
+
+const std::array<CommoditySpec, kCommodityCount>& Archipelago::getCommoditySpecs() {
+    return kCommoditySpecs;
+}
+
 void Archipelago::generate(uint64_t seed) {
     rng_.seedState(seed, 0x9E3779B97F4A7C15ULL);
     islands.clear();
@@ -23,8 +55,8 @@ void Archipelago::generate(uint64_t seed) {
         {"Gale-Watch Outpost", SkyBiome::WindmillSteppe, {380.0f, 132.0f, -240.0f}, 54.0f, true, false},
         {"Shattered Prism Atoll", SkyBiome::CrystalReef, {-360.0f, 145.0f, -380.0f}, 58.0f, false, false},
         {"Sun-Crest Sanctuary", SkyBiome::AzureHaven, {-480.0f, 118.0f, 220.0f}, 64.0f, true, true},
-        {"Cinder-Anvil Bastion", SkyBiome::ObsidianCrag, {560.0f, 95.0f, 360.0f}, 68.0f, false, false},
-        {"Whispering Spire Reef", SkyBiome::CrystalReef, {160.0f, 165.0f, -680.0f}, 50.0f, false, true},
+        {"Cinder-Anvil Bastion", SkyBiome::ObsidianCrag, {560.0f, 95.0f, 360.0f}, 68.0f, true, false},
+        {"Whispering Spire Reef", SkyBiome::CrystalReef, {160.0f, 165.0f, -680.0f}, 50.0f, true, true},
         {"Zephyr Trade Hub", SkyBiome::WindmillSteppe, {-140.0f, 125.0f, 540.0f}, 60.0f, true, false},
         {"Dread-Maw Monolith", SkyBiome::MaelstromEye, {0.0f, 138.0f, -1150.0f}, 82.0f, false, true}
     };
@@ -42,6 +74,7 @@ void Archipelago::generate(uint64_t seed) {
         isl.hasDrydockPort = p.hasPort;
         isl.hasLighthouse = p.hasLighthouse;
         isl.discovered = (isl.id == 1);
+        isl.marketPrices = computeIslandPrices(isl.biome, isl.id);
 
         switch (p.biome) {
             case SkyBiome::AzureHaven:
@@ -84,6 +117,29 @@ void Archipelago::generate(uint64_t seed) {
             isl.crystals.push_back(node);
         }
 
+        // Fortify ObsidianCrag & MaelstromEye islands with 3D Sky-Bastion Flak Towers
+        if (p.biome == SkyBiome::ObsidianCrag || p.biome == SkyBiome::MaelstromEye || isl.id == 3) {
+            isl.isFortifiedStronghold = true;
+            isl.isLiberated = false;
+            int turretCount = (p.biome == SkyBiome::MaelstromEye) ? 4 : 3;
+            for (int t = 0; t < turretCount; ++t) {
+                float tAngle = (static_cast<float>(t) / static_cast<float>(turretCount)) * kTwoPi + 0.52f;
+                float tDist = isl.radius * 0.68f;
+                SkyBastionTurret tur;
+                tur.worldPos = isl.position + Vec3{
+                    std::cos(tAngle) * tDist,
+                    6.0f,
+                    std::sin(tAngle) * tDist
+                };
+                tur.radius = 5.5f;
+                tur.maxHp = (p.biome == SkyBiome::MaelstromEye) ? 420.0f : 320.0f;
+                tur.hp = tur.maxHp;
+                tur.reloadTimer = 1.5f + 0.6f * static_cast<float>(t);
+                tur.barrelYaw = tAngle;
+                isl.bastionTurrets.push_back(tur);
+            }
+        }
+
         islands.push_back(isl);
     }
 
@@ -109,6 +165,7 @@ void Archipelago::generate(uint64_t seed) {
         isl.spireHeight = isl.radius * 0.5f;
         isl.hasDrydockPort = (i % 3 == 0);
         isl.hasLighthouse = (i % 2 == 1);
+        isl.marketPrices = computeIslandPrices(isl.biome, isl.id);
         isl.topColor = {88, 145, 98};
         isl.rockColor = {108, 102, 96};
 
@@ -117,6 +174,22 @@ void Archipelago::generate(uint64_t seed) {
             AetherCrystalNode node;
             node.worldPos = isl.position + Vec3{std::cos(cAngle) * (isl.radius * 0.65f), 3.5f, std::sin(cAngle) * (isl.radius * 0.65f)};
             isl.crystals.push_back(node);
+        }
+
+        if (i == 2 || i == 3) {
+            isl.isFortifiedStronghold = true;
+            isl.isLiberated = false;
+            for (int t = 0; t < 3; ++t) {
+                float tAngle = (static_cast<float>(t) / 3.0f) * kTwoPi + 0.35f;
+                SkyBastionTurret tur;
+                tur.worldPos = isl.position + Vec3{std::cos(tAngle) * (isl.radius * 0.66f), 6.0f, std::sin(tAngle) * (isl.radius * 0.66f)};
+                tur.radius = 5.5f;
+                tur.maxHp = 320.0f;
+                tur.hp = 320.0f;
+                tur.reloadTimer = 1.8f + 0.5f * static_cast<float>(t);
+                tur.barrelYaw = tAngle;
+                isl.bastionTurrets.push_back(tur);
+            }
         }
         islands.push_back(isl);
     }

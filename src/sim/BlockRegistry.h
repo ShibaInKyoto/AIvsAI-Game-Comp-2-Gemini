@@ -25,7 +25,11 @@ enum class BlockId : uint8_t {
     ShieldProjector = 14,
     PlasmaLance = 15,
     AfterburnerJet = 16,
-    Count = 17
+    TorpedoLauncher = 17,
+    ShockHarpoon = 18,
+    CapacitorBank = 19,
+    FlameMortar = 20,
+    Count = 21
 };
 
 struct ColorRGB {

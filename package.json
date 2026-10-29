@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "build": "cmake --build /tmp/build-linux -j 4 && /tmp/build-linux/bin/aethernaut_tests",
+    "lint": "/tmp/build-linux/bin/aethernaut_tests",
     "test": "/tmp/build-linux/bin/aethernaut_tests",
     "benchmark": "/tmp/build-linux/bin/aethernaut_benchmark"
   },

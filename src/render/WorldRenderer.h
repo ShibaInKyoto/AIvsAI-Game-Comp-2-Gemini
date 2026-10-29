@@ -49,7 +49,8 @@ public:
         float turretYaw,
         float turretPitch,
         float healthRatio,
-        ShaderPipeline& pipeline
+        ShaderPipeline& pipeline,
+        int liveryId = 0
     );
 
 private:

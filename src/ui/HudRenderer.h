@@ -53,6 +53,20 @@ public:
         int screenH,
         bool& inoutShowCodex
     );
+
+    void drawTradeAndContractsModal(
+        World& world,
+        int screenW,
+        int screenH,
+        bool& inoutShowLedger
+    );
+
+    void drawRelicVaultModal(
+        World& world,
+        int screenW,
+        int screenH,
+        bool& inoutShowRelics
+    );
 };
 
 } // namespace aethernaut

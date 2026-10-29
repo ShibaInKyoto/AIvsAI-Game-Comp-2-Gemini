@@ -23,6 +23,9 @@ struct Projectile3D {
     float maxLifetime = 5.0f;
     ColorRGB color{255, 200, 90};
     bool isHarpoon = false;
+    bool isShockHarpoon = false;
+    bool isHomingTorpedo = false;
+    bool isIncendiary = false;
     bool active = true;
 };
 
@@ -39,6 +42,8 @@ struct HarpoonTether {
     float currentLength = 95.0f;
     float tensionForce = 0.0f;
     float maxBreakTension = 950.0f;
+    bool isShockTether = false;
+    float shockPulseTimer = 0.0f;
     bool isReelingIn = false;
     bool active = true;
 };

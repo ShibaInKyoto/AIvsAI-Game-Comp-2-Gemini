@@ -93,9 +93,11 @@ const server = http.createServer((req, res) => {
       metrics: {
         simulationRateHz: 120,
         voxelResolution: '15x11x23 (3,795 cells/vessel)',
-        leviathanSegments: '18-30 segments with Hooke tether physics',
-        starterBlueprints: 7,
-        blockTypes: 16,
+        leviathanSegments: '18-30 segments across 6 Colossal Species',
+        starterBlueprints: 10,
+        blockTypes: 20,
+        leviathanSpecies: 6,
+        tradeCommodities: 4,
         specialistOfficers: 5,
         islandsCount: 14
       }

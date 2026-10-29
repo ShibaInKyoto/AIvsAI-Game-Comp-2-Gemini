@@ -200,13 +200,18 @@ void WorldRenderer::renderWorld3D(
         if (!validTarget) continue;
 
         float strainRatio = std::clamp(t.tensionForce / std::max(1.0f, t.maxBreakTension), 0.0f, 1.0f);
-        Color cableCol = Color{
-            static_cast<uint8_t>(185 + 70 * strainRatio),
-            static_cast<uint8_t>(185 - 110 * strainRatio),
-            static_cast<uint8_t>(160 - 120 * strainRatio),
-            255
-        };
+        Color cableCol = t.isShockTether
+            ? Color{75, 240, 255, 255}
+            : Color{
+                static_cast<uint8_t>(185 + 70 * strainRatio),
+                static_cast<uint8_t>(185 - 110 * strainRatio),
+                static_cast<uint8_t>(160 - 120 * strainRatio),
+                255
+            };
 
+        if (t.isShockTether) {
+            pipeline.setEmissiveStrength(1.45f);
+        }
         const int segs = 14;
         float sag = (1.0f - strainRatio) * 4.5f;
         Vec3 prevPt = pA;
@@ -214,12 +219,22 @@ void WorldRenderer::renderWorld3D(
             float u = static_cast<float>(s) / static_cast<float>(segs);
             Vec3 pt = Vec3::lerp(pA, pB, u);
             pt.y -= std::sin(u * kPi) * sag;
+            if (t.isShockTether && s < segs) {
+                float jitter = std::sin(animTime_ * 34.0f + static_cast<float>(s * 3)) * 0.65f;
+                pt.x += jitter;
+                pt.y += std::cos(animTime_ * 28.0f + static_cast<float>(s * 5)) * 0.65f;
+            }
             DrawCylinderEx(
                 {prevPt.x, prevPt.y, prevPt.z},
                 {pt.x, pt.y, pt.z},
-                0.18f, 0.18f, 6, cableCol
+                t.isShockTether ? 0.24f : 0.18f,
+                t.isShockTether ? 0.24f : 0.18f,
+                6, cableCol
             );
             prevPt = pt;
+        }
+        if (t.isShockTether) {
+            pipeline.setEmissiveStrength(0.0f);
         }
     }
 
@@ -228,13 +243,15 @@ void WorldRenderer::renderWorld3D(
     for (const auto& p : world.projectiles) {
         if (!p.active) continue;
         Color c = toRayColor(p.color);
-        float pRad = (p.weaponType == BlockId::PlasmaLance) ? 0.72f : (p.isHarpoon ? 0.62f : 0.50f);
+        float pRad = (p.isHomingTorpedo) ? 0.92f : ((p.weaponType == BlockId::PlasmaLance || p.isIncendiary) ? 0.78f : (p.isHarpoon ? 0.62f : 0.50f));
         DrawSphere({p.position.x, p.position.y, p.position.z}, pRad, c);
-        Vec3 tail = p.position - p.velocity * 0.055f;
+        Vec3 tail = p.position - p.velocity * (p.isHomingTorpedo ? 0.085f : 0.055f);
         DrawCylinderEx(
             {tail.x, tail.y, tail.z},
             {p.position.x, p.position.y, p.position.z},
-            0.14f, 0.36f, 6, c
+            p.isHomingTorpedo ? 0.28f : 0.14f,
+            p.isHomingTorpedo ? 0.54f : 0.36f,
+            6, c
         );
     }
 
@@ -268,6 +285,23 @@ void WorldRenderer::renderWorld3D(
         Color c = pt.color;
         c.a = static_cast<uint8_t>(t * 240.0f);
         DrawSphere({pt.position.x, pt.position.y, pt.position.z}, pt.size * t, c);
+    }
+
+    // 11. Render 3D Dynamic Weather Particles (Cirrus Mist, Ion-Aether Squall, Supercell Tempest)
+    if (world.currentWeather != WeatherState::ClearTradeWinds) {
+        Color wCol = (world.currentWeather == WeatherState::IonAetherSquall)
+            ? Color{75, 240, 255, 185}
+            : ((world.currentWeather == WeatherState::SupercellTempest)
+                ? Color{255, 115, 75, 175}
+                : Color{185, 215, 245, 160});
+        for (int i = 0; i < 64; ++i) {
+            float rx = std::fmod(static_cast<float>(i * 73) + animTime_ * 18.0f, 120.0f) - 60.0f;
+            float ry = 40.0f - std::fmod(static_cast<float>(i * 41) + animTime_ * 68.0f, 80.0f);
+            float rz = std::fmod(static_cast<float>(i * 97) + animTime_ * 14.0f, 120.0f) - 60.0f;
+            Vector3 pTop{camPos.x + rx, camPos.y + ry, camPos.z + rz};
+            Vector3 pBot{pTop.x - 1.4f, pTop.y - 3.6f, pTop.z - 0.8f};
+            DrawLine3D(pTop, pBot, wCol);
+        }
     }
     pipeline.setEmissiveStrength(0.0f);
 
@@ -508,6 +542,66 @@ void WorldRenderer::renderIsland(const SkyIsland& isl, float time, ShaderPipelin
         rlPopMatrix();
     }
     pipeline.setEmissiveStrength(0.0f);
+
+    // 8. Fortified Sky-Citadel Bastion Flak Towers & Liberation Beacon (in world coords)
+    if (isl.isFortifiedStronghold) {
+        for (const auto& tur : isl.bastionTurrets) {
+            rlPushMatrix();
+            rlTranslatef(tur.worldPos.x, tur.worldPos.y, tur.worldPos.z);
+
+            if (tur.destroyed) {
+                // Scorched ruined turret base
+                rlPushMatrix();
+                rlTranslatef(0.0f, -2.5f, 0.0f);
+                rlScalef(6.2f, 4.5f, 6.2f);
+                DrawModel(models_.cylinder, {0.0f, 0.0f, 0.0f}, 1.0f, Color{48, 44, 46, 255});
+                rlPopMatrix();
+            } else {
+                // Armored Obsidian & Brass Bastion Tower Base
+                rlPushMatrix();
+                rlTranslatef(0.0f, -2.0f, 0.0f);
+                rlScalef(6.8f, 9.5f, 6.8f);
+                DrawModel(models_.cylinder, {0.0f, 0.0f, 0.0f}, 1.0f, Color{58, 52, 64, 255});
+                rlPopMatrix();
+
+                // Rotating Twin Heavy Flak Gun Cupola
+                rlPushMatrix();
+                rlTranslatef(0.0f, 5.5f, 0.0f);
+                rlRotatef(tur.barrelYaw * kRadToDeg, 0.0f, 1.0f, 0.0f);
+                DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 3.6f, Color{165, 118, 55, 255});
+
+                for (int side : {-1, +1}) {
+                    rlPushMatrix();
+                    rlTranslatef(static_cast<float>(side) * 1.4f, 0.6f, -3.5f);
+                    rlScalef(0.85f, 0.85f, 6.5f);
+                    DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, Color{42, 46, 54, 255});
+                    rlPopMatrix();
+                }
+
+                // Glowing Crimson Targeting Searchlight Eye
+                pipeline.setEmissiveStrength(1.5f);
+                DrawSphere({0.0f, 1.8f, -2.2f}, 1.15f, Color{255, 75, 55, 255});
+                pipeline.setEmissiveStrength(0.0f);
+                rlPopMatrix();
+            }
+            rlPopMatrix();
+        }
+
+        // If Liberated, render a towering Allied Sky-Beacon Pylon above the Citadel!
+        if (isl.isLiberated) {
+            pipeline.setEmissiveStrength(1.5f);
+            DrawCylinderEx(
+                {isl.position.x, isl.position.y + 8.0f, isl.position.z},
+                {isl.position.x, isl.position.y + isl.spireHeight + 48.0f, isl.position.z},
+                2.2f, 0.6f, 8, Color{65, 245, 185, 200}
+            );
+            DrawSphere(
+                {isl.position.x, isl.position.y + isl.spireHeight + 48.0f, isl.position.z},
+                5.5f, Color{85, 255, 195, 255}
+            );
+            pipeline.setEmissiveStrength(0.0f);
+        }
+    }
 }
 
 void WorldRenderer::renderSingleBlock3D(
@@ -518,20 +612,42 @@ void WorldRenderer::renderSingleBlock3D(
     float turretYaw,
     float turretPitch,
     float healthRatio,
-    ShaderPipeline& pipeline
+    ShaderPipeline& pipeline,
+    int liveryId
 ) {
     const BlockSpec& spec = BlockRegistry::get(id);
+    ColorRGB basePri = spec.primaryColor;
+    ColorRGB baseAcc = spec.accentColor;
+
+    // Apply Custom Fleet Hull Livery Paint Themes (1..5) to structural & envelope blocks
+    if (liveryId > 0) {
+        int liv = liveryId % 6;
+        if (id == BlockId::WoodHull || id == BlockId::IronArmor || id == BlockId::HelmBridge) {
+            if (liv == 1)      { basePri = {48, 96, 175};  baseAcc = {215, 232, 250}; } // Imperial Azure Guard
+            else if (liv == 2) { basePri = {152, 36, 38};  baseAcc = {46, 42, 48};    } // Crimson Corsair Armada
+            else if (liv == 3) { basePri = {218, 172, 62}; baseAcc = {250, 238, 195}; } // Solaris Gilded Sovereign
+            else if (liv == 4) { basePri = {38, 36, 48};   baseAcc = {168, 95, 248};  } // Abyssal Void-Stalker
+            else if (liv == 5) { basePri = {42, 128, 82};  baseAcc = {215, 168, 72};  } // Emerald Sky-Ranger
+        } else if (id == BlockId::LiftBalloon) {
+            if (liv == 1)      { basePri = {235, 244, 255}; baseAcc = {55, 125, 215}; }
+            else if (liv == 2) { basePri = {52, 46, 54};    baseAcc = {205, 48, 48};  }
+            else if (liv == 3) { basePri = {252, 235, 175}; baseAcc = {215, 155, 45}; }
+            else if (liv == 4) { basePri = {54, 45, 78};    baseAcc = {185, 105, 255};}
+            else if (liv == 5) { basePri = {215, 242, 222}; baseAcc = {48, 145, 92};  }
+        }
+    }
+
     float dmgDarken = 0.45f + 0.55f * std::clamp(healthRatio, 0.0f, 1.0f);
     Color priCol{
-        static_cast<uint8_t>(spec.primaryColor.r * dmgDarken),
-        static_cast<uint8_t>(spec.primaryColor.g * dmgDarken),
-        static_cast<uint8_t>(spec.primaryColor.b * dmgDarken),
+        static_cast<uint8_t>(basePri.r * dmgDarken),
+        static_cast<uint8_t>(basePri.g * dmgDarken),
+        static_cast<uint8_t>(basePri.b * dmgDarken),
         255
     };
     Color accCol{
-        static_cast<uint8_t>(spec.accentColor.r * dmgDarken),
-        static_cast<uint8_t>(spec.accentColor.g * dmgDarken),
-        static_cast<uint8_t>(spec.accentColor.b * dmgDarken),
+        static_cast<uint8_t>(baseAcc.r * dmgDarken),
+        static_cast<uint8_t>(baseAcc.g * dmgDarken),
+        static_cast<uint8_t>(baseAcc.b * dmgDarken),
         255
     };
 
@@ -741,6 +857,90 @@ void WorldRenderer::renderSingleBlock3D(
             rlPopMatrix();
             break;
         }
+        case BlockId::TorpedoLauncher: {
+            // Armored dual torpedo tube rack
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.35f, 0.0f);
+            rlScalef(kVoxelSize * 0.88f, kVoxelSize * 0.45f, kVoxelSize * 0.88f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+
+            rlPushMatrix();
+            rlRotatef(turretYaw * kRadToDeg - static_cast<float>(orientation) * -90.0f, 0.0f, 1.0f, 0.0f);
+            for (int side : {-1, +1}) {
+                rlPushMatrix();
+                rlTranslatef(static_cast<float>(side) * 0.36f, 0.18f, -0.45f);
+                rlScalef(0.32f, 0.32f, 1.85f);
+                DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+                rlPopMatrix();
+
+                pipeline.setEmissiveStrength(1.5f);
+                DrawSphere({static_cast<float>(side) * 0.36f, 0.18f, -1.42f}, 0.22f, accCol);
+                pipeline.setEmissiveStrength(0.0f);
+            }
+            rlPopMatrix();
+            break;
+        }
+        case BlockId::ShockHarpoon: {
+            // Electrified Shock Harpoon Winch + Glowing Induction Coils
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.3f, 0.0f);
+            rlScalef(kVoxelSize * 0.84f, kVoxelSize * 0.52f, kVoxelSize * 0.84f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            pipeline.setEmissiveStrength(1.45f);
+            rlPushMatrix();
+            rlRotatef(turretYaw * kRadToDeg - static_cast<float>(orientation) * -90.0f, 0.0f, 1.0f, 0.0f);
+            rlTranslatef(0.0f, 0.25f, -0.78f);
+            rlScalef(0.36f, 0.36f, 2.15f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+            DrawSphere({0.0f, 0.55f, 0.0f}, 0.35f, priCol);
+            break;
+        }
+        case BlockId::CapacitorBank: {
+            // Heavy brass base + twin glowing Chrono-Aether glass cylinders
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.42f, 0.0f);
+            rlScalef(kVoxelSize * 0.88f, kVoxelSize * 0.32f, kVoxelSize * 0.88f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            pipeline.setEmissiveStrength(1.45f);
+            for (int side : {-1, +1}) {
+                rlPushMatrix();
+                rlTranslatef(static_cast<float>(side) * 0.36f, -0.25f, 0.0f);
+                rlScalef(0.28f, 1.25f, 0.28f);
+                DrawModel(models_.cylinder, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+                rlPopMatrix();
+            }
+            rlPushMatrix();
+            rlTranslatef(0.0f, 0.45f, 0.0f);
+            rlRotatef(propSpinAngle * 32.0f, 0.0f, 1.0f, 0.0f);
+            rlScalef(0.76f, 0.45f, 0.76f);
+            DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+            break;
+        }
+        case BlockId::FlameMortar: {
+            // Heavy bronze siege howitzer carriage + wide elevated magma barrel
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.35f, 0.0f);
+            rlScalef(kVoxelSize * 0.88f, kVoxelSize * 0.48f, kVoxelSize * 0.88f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            pipeline.setEmissiveStrength(1.35f);
+            rlPushMatrix();
+            rlRotatef(turretYaw * kRadToDeg - static_cast<float>(orientation) * -90.0f, 0.0f, 1.0f, 0.0f);
+            rlRotatef(26.0f, 1.0f, 0.0f, 0.0f);
+            rlTranslatef(0.0f, 0.22f, -0.55f);
+            rlScalef(0.62f, 0.62f, 1.55f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+            break;
+        }
         default: {
             rlScalef(kVoxelSize * 0.9f, kVoxelSize * 0.9f, kVoxelSize * 0.9f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
@@ -787,7 +987,8 @@ void WorldRenderer::renderAirship(
                     cell.turretYaw,
                     cell.turretPitch,
                     hpRatio,
-                    pipeline
+                    pipeline,
+                    ship.hullLiveryId
                 );
 
                 // Render active deck fire plume if burning
