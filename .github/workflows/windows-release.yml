@@ -1,0 +1,35 @@
+name: Windows 10/11 Native Release
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Standalone Executable
+        run: cmake --build build --config Release
+
+      - name: Archive Windows Release
+        run: |
+          mkdir release
+          copy build\bin\Release\ChronoStrider.exe release\
+          copy README.md release\
+          Compress-Archive -Path release\* -DestinationPath ChronoStrider-Windows-x64.zip
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChronoStrider-Windows-x64
+          path: ChronoStrider-Windows-x64.zip

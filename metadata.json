@@ -1,0 +1,7 @@
+{
+  "name": "ChronoStrider: Quantum Breach",
+  "description": "High-octane kinetic sci-fi extraction combat simulator with dynamic time-dilation, particle physics, and dual Web + Windows 10/11 native engine.",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
