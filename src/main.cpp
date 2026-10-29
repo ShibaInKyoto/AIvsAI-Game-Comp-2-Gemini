@@ -189,6 +189,7 @@ int main(int argc, char** argv) {
     DrydockEditor drydockEditor;
     HudRenderer hudRenderer;
     bool showWorldMap = false;
+    bool showCrewModal = false;
     bool showCodex = false;
 
     float totalElapsed = 0.0f;
@@ -206,6 +207,12 @@ int main(int argc, char** argv) {
 
         if (IsKeyPressed(KEY_F3)) {
             config.showPerfOverlay = !config.showPerfOverlay;
+        }
+        if (IsKeyPressed(KEY_V)) {
+            world.skyAtmospherePreset = (world.skyAtmospherePreset + 1) % 4;
+            const char* kAtmosNames[4] = {"Golden Dawn", "High Azure Noon", "Crimson Sundown", "Starlit Aether Night"};
+            world.statusBannerText = std::string("Sky Atmosphere Set: ") + kAtmosNames[world.skyAtmospherePreset];
+            world.statusBannerTimer = 3.0f;
         }
 
         // Camera Orbit Controls (Right-Mouse Drag in Drydock, or Mouse Wheel Zoom, or Q/E Orbit)
@@ -248,14 +255,33 @@ int main(int argc, char** argv) {
             }
             if (IsKeyPressed(KEY_M)) {
                 showWorldMap = !showWorldMap;
-                if (showWorldMap) showCodex = false;
+                if (showWorldMap) { showCrewModal = false; showCodex = false; }
+            }
+            if (IsKeyPressed(KEY_K)) {
+                showCrewModal = !showCrewModal;
+                if (showCrewModal) { showWorldMap = false; showCodex = false; }
             }
             if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_F1)) {
                 showCodex = !showCodex;
-                if (showCodex) showWorldMap = false;
+                if (showCodex) { showWorldMap = false; showCrewModal = false; }
             }
             if (IsKeyPressed(KEY_U)) {
                 world.hireAlliedWingman();
+            }
+            if (IsKeyPressed(KEY_X)) {
+                world.triggerDamageControl();
+            }
+            if (IsKeyPressed(KEY_C)) {
+                world.triggerSonarPing();
+            }
+            if (IsKeyPressed(KEY_N)) {
+                world.summonApexLeviathan();
+            }
+            if (IsKeyPressed(KEY_F6)) {
+                world.saveCampaign("campaign_save.aeth");
+            }
+            if (IsKeyPressed(KEY_F7)) {
+                world.loadCampaign("campaign_save.aeth");
             }
             if (IsKeyPressed(KEY_B) && (canDockAtPort || world.isSandboxMode)) {
                 currentScreen = ActiveScreen::Drydock;
@@ -265,7 +291,7 @@ int main(int argc, char** argv) {
             }
 
             // Player Manual Flight / Deck Controls
-            if (!world.playerAutopilot) {
+            if (!world.playerAutopilot && !showWorldMap && !showCrewModal && !showCodex) {
                 if (world.isPlayerWalkingOnDeck) {
                     float fwd = 0.0f, right = 0.0f;
                     if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) fwd += 1.0f;
@@ -278,6 +304,7 @@ int main(int argc, char** argv) {
                     if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) throttle += 1.0f;
                     if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) throttle -= 0.7f;
                     world.playerShip.throttleInput = throttle;
+                    world.playerShip.afterburnerInput = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT));
 
                     float rudder = 0.0f;
                     if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) rudder += 1.0f;
@@ -286,7 +313,7 @@ int main(int argc, char** argv) {
 
                     float alt = 0.0f;
                     if (IsKeyDown(KEY_SPACE)) alt += 1.0f;
-                    if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_C)) alt -= 1.0f;
+                    if (IsKeyDown(KEY_LEFT_CONTROL)) alt -= 1.0f;
                     world.playerShip.altitudeInput = alt;
                 }
 
@@ -420,6 +447,9 @@ int main(int argc, char** argv) {
             }
             if (showWorldMap) {
                 hudRenderer.drawWorldMapModal(world, screenW, screenH, showWorldMap);
+            }
+            if (showCrewModal) {
+                hudRenderer.drawCrewModal(world, screenW, screenH, showCrewModal);
             }
             if (showCodex) {
                 hudRenderer.drawCodexModal(screenW, screenH, showCodex);

@@ -36,11 +36,11 @@ AppConfig AppConfig::parseArgs(int argc, char** argv) {
             cfg.initialBlueprintIndex = std::atoi(argv[++i]);
         } else if (arg == "--scene" && i + 1 < argc) {
             std::string sc = argv[++i];
-            if (sc == "title") cfg.startScene = InitialScene::Title;
-            else if (sc == "flight") cfg.startScene = InitialScene::Flight;
-            else if (sc == "drydock") cfg.startScene = InitialScene::Drydock;
-            else if (sc == "leviathan") cfg.startScene = InitialScene::LeviathanHunt;
-            else if (sc == "skirmish") cfg.startScene = InitialScene::FleetSkirmish;
+            if (sc == "title" || sc == "0") cfg.startScene = InitialScene::Title;
+            else if (sc == "flight" || sc == "campaign" || sc == "1") cfg.startScene = InitialScene::Flight;
+            else if (sc == "drydock" || sc == "shipyard" || sc == "2") cfg.startScene = InitialScene::Drydock;
+            else if (sc == "leviathan" || sc == "hunt" || sc == "3") cfg.startScene = InitialScene::LeviathanHunt;
+            else if (sc == "skirmish" || sc == "4") cfg.startScene = InitialScene::FleetSkirmish;
         }
     }
     return cfg;

@@ -53,7 +53,7 @@ public:
     int id() const { return id_; }
     const std::string& name() const { return name_; }
     void setName(const std::string& n) { name_ = n; }
-    int faction() const { return faction_; } // 0: Player Fleet, 1: Sky Pirates, 2: Imperial Navy
+    int faction() const { return faction_; } // 0: Player Fleet, 1: Sky Pirates, 2: Imperial / Merchant
 
     // Grid coordinate helpers: grid coords are centered around (0, 0, 0)
     static constexpr int minX() { return -(kShipGridX / 2); }
@@ -86,11 +86,14 @@ public:
         float& outHitDist
     ) const;
 
-    // Recomputes total mass, Center of Mass, Center of Lift, thrust, power, and integrity
+    // Recomputes total mass, Center of Mass, Center of Lift, thrust, power, shield, and integrity
     void recomputeMetrics();
 
     // Performs 3D BFS from Command Bridge / Reactor Cores; severs disconnected islands into debris
     int severDisconnectedBlocks(std::vector<DetachedDebris>& outDebris);
+
+    // Absorb damage with 3D Energy Shield Dome first; returns remaining damage that penetrates to hull
+    float absorbShieldDamage(float incomingDamage);
 
     // Apply localized damage (explosive radius or direct impact)
     int applyDamageAtWorldPos(
@@ -101,7 +104,7 @@ public:
         std::vector<DetachedDebris>& outDebris
     );
 
-    // Step physics, buoyancy, aerodynamics, repair cranes, and turret tracking
+    // Step physics, buoyancy, aerodynamics, shields, afterburners, repair cranes, and turret tracking
     void updatePhysics(float dt, const Vec3& windVector, float targetAimWorldX, float targetAimWorldY, float targetAimWorldZ);
 
     // Fire all ready weapons of a given type aimed toward targetWorldPos
@@ -127,12 +130,23 @@ public:
     float throttleInput = 0.0f;
     float rudderInput = 0.0f;
     float altitudeInput = 0.0f; // +1 Ascend ballast, -1 Descend ballast
+    bool afterburnerInput = false;
+    bool isBoosting = false;
+    float afterburnerFuel = 100.0f;
+    float maxAfterburnerFuel = 100.0f;
     float targetCruiseAltitude = 120.0f;
 
     // Walk-on-Deck Captain State (when player walks on deck)
     Vec3 captainLocalPos{0.0f, 2.5f, 0.0f};
     float captainYaw = 0.0f;
     float captainPitch = 0.0f;
+
+    // Officer & Tech Upgrade Multipliers
+    float thrustMultiplier = 1.0f;
+    float turnMultiplier = 1.0f;
+    float reloadMultiplier = 1.0f;
+    float repairMultiplier = 1.0f;
+    float shieldMultiplier = 1.0f;
 
     // Computed Engineering Metrics
     float totalMass = 100.0f;
@@ -144,11 +158,16 @@ public:
     float powerEfficiency = 1.0f; // 0..1 based on reactor supply vs demand
     float totalHp = 100.0f;
     float totalMaxHp = 100.0f;
+    float shieldHp = 120.0f;
+    float maxShieldHp = 120.0f;
+    float shieldRechargeDelay = 0.0f;
+    float shieldHitFlashTimer = 0.0f;
     int occupiedBlockCount = 0;
     int cannonCount = 0;
     int harpoonCount = 0;
     int propellerCount = 0;
     int liftCellCount = 0;
+    int shieldProjectorCount = 0;
     Vec3 centerOfMassLocal{0.0f, 0.0f, 0.0f};
     Vec3 centerOfLiftLocal{0.0f, 0.0f, 0.0f};
     float boundingRadius = 18.0f;

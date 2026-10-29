@@ -77,22 +77,52 @@ void WorldRenderer::renderWorld3D(
 ) {
     Vec3 camPos{camera.position.x, camera.position.y, camera.position.z};
 
-    // Golden-hour sky-fleet lighting & atmospheric uniforms
+    // Select Sky-Atmosphere Lighting & Fog Palette (0: Golden Dawn, 1: High Noon, 2: Crimson Dusk, 3: Starlit Night)
     Vec3 sunDir = Vec3{-0.42f, -0.62f, 0.66f}.normalized();
     Vec3 sunCol{1.08f, 0.96f, 0.82f};
     Vec3 skyAmb{0.38f, 0.52f, 0.72f};
     Vec3 grdAmb{0.22f, 0.27f, 0.38f};
     Vec3 fogCol{0.50f, 0.68f, 0.88f};
+    Color clearBg{96, 146, 206, 255};
+
+    switch (world.skyAtmospherePreset % 4) {
+        case 1: // High Azure Noon
+            sunDir = Vec3{-0.22f, -0.86f, 0.46f}.normalized();
+            sunCol = {1.12f, 1.08f, 0.98f};
+            skyAmb = {0.46f, 0.62f, 0.84f};
+            grdAmb = {0.26f, 0.34f, 0.45f};
+            fogCol = {0.58f, 0.78f, 0.96f};
+            clearBg = Color{112, 174, 232, 255};
+            break;
+        case 2: // Crimson Sundown
+            sunDir = Vec3{-0.62f, -0.34f, 0.70f}.normalized();
+            sunCol = {1.22f, 0.68f, 0.44f};
+            skyAmb = {0.42f, 0.28f, 0.48f};
+            grdAmb = {0.20f, 0.14f, 0.26f};
+            fogCol = {0.68f, 0.38f, 0.46f};
+            clearBg = Color{118, 68, 96, 255};
+            break;
+        case 3: // Starlit Aether Night
+            sunDir = Vec3{0.35f, -0.72f, 0.58f}.normalized();
+            sunCol = {0.52f, 0.74f, 1.05f};
+            skyAmb = {0.16f, 0.24f, 0.42f};
+            grdAmb = {0.08f, 0.12f, 0.22f};
+            fogCol = {0.10f, 0.16f, 0.30f};
+            clearBg = Color{16, 26, 48, 255};
+            break;
+        default: // 0: Golden Dawn
+            break;
+    }
 
     pipeline.updateWorldUniforms(camPos, sunDir, sunCol, skyAmb, grdAmb, fogCol, 0.00048f);
     pipeline.setEmissiveStrength(0.0f);
 
     // Clear sky backdrop
-    ClearBackground(Color{96, 146, 206, 255});
+    ClearBackground(clearBg);
 
     BeginMode3D(camera);
 
-    // 0. Render Celestial Sky-Dome, Golden Sun Disc & High Cirrus Layer
+    // 0. Render Celestial Sky-Dome, Sun/Moon Disc & High Cirrus Layer
     renderSkyDomeAndSun(camPos, sunDir, animTime_, pipeline);
 
     // 1. Render Volumetric 3D Cloud Sea Layer
@@ -130,18 +160,44 @@ void WorldRenderer::renderWorld3D(
         }
     }
 
-    // 6. Render Physical Harpoon Tether Steel Cables
+    // 5B. Render Expanding Acoustic Aether-Sonar Wave (if active)
+    if (world.sonarWaveRadius > 0.0f) {
+        pipeline.setEmissiveStrength(1.5f);
+        float alphaPct = std::clamp(1.0f - (world.sonarWaveRadius / 650.0f), 0.0f, 1.0f);
+        uint8_t a = static_cast<uint8_t>(alphaPct * 220.0f);
+        DrawSphereWires(
+            {world.sonarWaveOrigin.x, world.sonarWaveOrigin.y, world.sonarWaveOrigin.z},
+            world.sonarWaveRadius, 12, 18, Color{75, 235, 255, a}
+        );
+        pipeline.setEmissiveStrength(0.0f);
+    }
+
+    // 6. Render Physical Harpoon Tether Steel Cables (to Leviathans or Enemy Ships)
     for (const auto& t : world.tethers) {
         if (!t.active) continue;
         Vec3 pA = world.playerShip.localToWorldPos(t.sourceLocalOffset);
         Vec3 pB = pA;
-        for (const auto& lev : world.leviathans) {
-            if (lev.id() == t.targetLeviathanId && !lev.isSlain && !lev.segments.empty()) {
-                int idx = std::clamp(t.targetSegmentIdx, 0, static_cast<int>(lev.segments.size()) - 1);
-                pB = lev.segments[static_cast<size_t>(idx)].position;
-                break;
+        bool validTarget = false;
+
+        if (t.targetLeviathanId >= 0) {
+            for (const auto& lev : world.leviathans) {
+                if (lev.id() == t.targetLeviathanId && !lev.isSlain && !lev.segments.empty()) {
+                    int idx = std::clamp(t.targetSegmentIdx, 0, static_cast<int>(lev.segments.size()) - 1);
+                    pB = lev.segments[static_cast<size_t>(idx)].position;
+                    validTarget = true;
+                    break;
+                }
+            }
+        } else if (t.targetShipId >= 0) {
+            for (const auto& npc : world.npcShips) {
+                if (npc.id() == t.targetShipId && !npc.isDestroyed) {
+                    pB = npc.localToWorldPos(t.targetShipLocalOffset);
+                    validTarget = true;
+                    break;
+                }
             }
         }
+        if (!validTarget) continue;
 
         float strainRatio = std::clamp(t.tensionForce / std::max(1.0f, t.maxBreakTension), 0.0f, 1.0f);
         Color cableCol = Color{
@@ -172,7 +228,8 @@ void WorldRenderer::renderWorld3D(
     for (const auto& p : world.projectiles) {
         if (!p.active) continue;
         Color c = toRayColor(p.color);
-        DrawSphere({p.position.x, p.position.y, p.position.z}, p.isHarpoon ? 0.62f : 0.50f, c);
+        float pRad = (p.weaponType == BlockId::PlasmaLance) ? 0.72f : (p.isHarpoon ? 0.62f : 0.50f);
+        DrawSphere({p.position.x, p.position.y, p.position.z}, pRad, c);
         Vec3 tail = p.position - p.velocity * 0.055f;
         DrawCylinderEx(
             {tail.x, tail.y, tail.z},
@@ -334,6 +391,42 @@ void WorldRenderer::renderIsland(const SkyIsland& isl, float time, ShaderPipelin
     DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, darkRockCol);
     rlPopMatrix();
 
+    // 4B. Biome-Specific Architectural Landmarks (Windmills or Ancient Aether Monolith Rings)
+    if (isl.biome == SkyBiome::WindmillSteppe) {
+        float wx = -isl.radius * 0.42f;
+        float wz = -isl.radius * 0.32f;
+        rlPushMatrix();
+        rlTranslatef(wx, 5.0f, wz);
+        rlPushMatrix();
+        rlScalef(4.5f, 20.0f, 4.5f);
+        DrawModel(models_.cylinder, {0.0f, 0.0f, 0.0f}, 1.0f, Color{215, 195, 165, 255});
+        rlPopMatrix();
+        // Rotating 4-vane windmill sails
+        rlPushMatrix();
+        rlTranslatef(0.0f, 17.0f, -4.8f);
+        rlRotatef(time * 42.0f, 0.0f, 0.0f, 1.0f);
+        rlPushMatrix();
+        rlScalef(22.0f, 2.2f, 0.5f);
+        DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, Color{240, 232, 210, 255});
+        rlPopMatrix();
+        rlPushMatrix();
+        rlScalef(2.2f, 22.0f, 0.5f);
+        DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, Color{240, 232, 210, 255});
+        rlPopMatrix();
+        rlPopMatrix();
+        rlPopMatrix();
+    } else if (isl.biome == SkyBiome::CrystalReef || isl.biome == SkyBiome::MaelstromEye) {
+        pipeline.setEmissiveStrength(1.1f);
+        rlPushMatrix();
+        rlTranslatef(0.0f, isl.spireHeight + 14.0f, 0.0f);
+        rlRotatef(time * 24.0f, 0.0f, 1.0f, 0.0f);
+        rlRotatef(65.0f, 1.0f, 0.0f, 0.0f);
+        rlScalef(14.0f, 14.0f, 14.0f);
+        DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, Color{75, 235, 255, 255});
+        rlPopMatrix();
+        pipeline.setEmissiveStrength(0.0f);
+    }
+
     // 5. Drydock Sky-Port Pier, Steel Gantry Cranes & Docking Beacons (on Northern -Z Rim)
     if (isl.hasDrydockPort) {
         float pierZ = -isl.radius - 16.0f;
@@ -449,7 +542,8 @@ void WorldRenderer::renderSingleBlock3D(
 
     switch (id) {
         case BlockId::WoodHull:
-        case BlockId::IronArmor: {
+        case BlockId::IronArmor:
+        case BlockId::OrichalcumArmor: {
             rlPushMatrix();
             rlScalef(kVoxelSize * 0.96f, kVoxelSize * 0.96f, kVoxelSize * 0.96f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
@@ -457,6 +551,9 @@ void WorldRenderer::renderSingleBlock3D(
             rlPopMatrix();
 
             // Upper deck trim / riveted plate band
+            if (id == BlockId::OrichalcumArmor) {
+                pipeline.setEmissiveStrength(0.75f);
+            }
             rlPushMatrix();
             rlTranslatef(0.0f, kVoxelSize * 0.42f, 0.0f);
             rlScalef(kVoxelSize * 0.88f, kVoxelSize * 0.14f, kVoxelSize * 0.88f);
@@ -519,6 +616,22 @@ void WorldRenderer::renderSingleBlock3D(
             rlPopMatrix();
             break;
         }
+        case BlockId::AfterburnerJet: {
+            // Armored Jet Nacelle
+            rlPushMatrix();
+            rlScalef(kVoxelSize * 0.68f, kVoxelSize * 0.68f, kVoxelSize * 0.94f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+            // Glowing Aether-Ramjet Exhaust Cone
+            pipeline.setEmissiveStrength(1.65f);
+            rlPushMatrix();
+            rlTranslatef(0.0f, 0.0f, -kVoxelSize * 0.62f);
+            rlRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+            rlScalef(0.65f, 1.85f, 0.65f);
+            DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+            break;
+        }
         case BlockId::GyroRudder: {
             // Gyro housing base
             rlPushMatrix();
@@ -535,7 +648,8 @@ void WorldRenderer::renderSingleBlock3D(
             break;
         }
         case BlockId::DeckCannon:
-        case BlockId::FlakTurret: {
+        case BlockId::FlakTurret:
+        case BlockId::PlasmaLance: {
             // Armored gun carriage base
             rlPushMatrix();
             rlTranslatef(0.0f, -0.35f, 0.0f);
@@ -544,11 +658,14 @@ void WorldRenderer::renderSingleBlock3D(
             rlPopMatrix();
 
             // Aim-tracking turret head & barrel
+            if (id == BlockId::PlasmaLance) {
+                pipeline.setEmissiveStrength(1.35f);
+            }
             rlPushMatrix();
             rlRotatef(turretYaw * kRadToDeg - static_cast<float>(orientation) * -90.0f, 0.0f, 1.0f, 0.0f);
             rlRotatef(std::clamp(turretPitch * kRadToDeg, -25.0f, 45.0f), 1.0f, 0.0f, 0.0f);
             rlTranslatef(0.0f, 0.15f, -0.68f);
-            rlScalef(0.46f, 0.46f, 1.72f);
+            rlScalef(0.46f, 0.46f, (id == BlockId::PlasmaLance) ? 2.15f : 1.72f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
             rlPopMatrix();
             break;
@@ -576,6 +693,24 @@ void WorldRenderer::renderSingleBlock3D(
             rlPopMatrix();
             pipeline.setEmissiveStrength(1.55f);
             DrawSphere({0.0f, 0.98f, 0.0f}, 0.54f, priCol);
+            break;
+        }
+        case BlockId::ShieldProjector: {
+            // Pedestal + rotating emitter ring + glowing shield core
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.45f, 0.0f);
+            rlScalef(kVoxelSize * 0.78f, kVoxelSize * 0.35f, kVoxelSize * 0.78f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            pipeline.setEmissiveStrength(1.45f);
+            rlPushMatrix();
+            rlTranslatef(0.0f, 0.35f, 0.0f);
+            rlRotatef(propSpinAngle * 25.0f, 0.0f, 1.0f, 0.0f);
+            rlScalef(0.85f, 0.85f, 0.85f);
+            DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+            DrawSphere({0.0f, 0.45f, 0.0f}, 0.48f, priCol);
             break;
         }
         case BlockId::RepairCrane: {
@@ -665,6 +800,20 @@ void WorldRenderer::renderAirship(
                 rlPopMatrix();
             }
         }
+    }
+
+    // 3D Hexagonal Energy Shield Dome Visualization (when shield projectors active or shield struck)
+    if (ship.shieldHp > 0.0f && (ship.shieldProjectorCount > 0 || ship.shieldHitFlashTimer > 0.0f)) {
+        pipeline.setEmissiveStrength(1.35f);
+        float flashRatio = std::clamp(ship.shieldHitFlashTimer / 0.45f, 0.0f, 1.0f);
+        uint8_t alpha = static_cast<uint8_t>(38.0f + flashRatio * 155.0f);
+        DrawSphereWires(
+            {0.0f, 1.0f, 0.0f},
+            ship.boundingRadius * 0.92f,
+            8, 12,
+            Color{75, 235, 255, alpha}
+        );
+        pipeline.setEmissiveStrength(0.0f);
     }
 
     // Walk-on-Deck Captain Avatar (when player walks on deck)

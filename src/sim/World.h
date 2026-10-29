@@ -10,6 +10,7 @@
 #include "sim/AIController.h"
 #include <vector>
 #include <string>
+#include <array>
 
 namespace aethernaut {
 
@@ -50,6 +51,14 @@ struct CombatCallout3D {
     float maxLifetime = 1.6f;
 };
 
+struct OfficerSpec {
+    const char* name;
+    const char* role;
+    const char* bonusDesc;
+    int baseGoldCost;
+    int baseAetherCost;
+};
+
 class World {
 public:
     World();
@@ -59,6 +68,20 @@ public:
     void spawnPirateSquadron(int count, const Vec3& centerPos);
     void spawnAlliedWingman(int blueprintIdx, const Vec3& pos);
     bool hireAlliedWingman();
+    void summonApexLeviathan();
+
+    // Officer Crew Roster & Upgrades (0..4)
+    static const std::array<OfficerSpec, 5>& getOfficerSpecs();
+    bool upgradeOfficer(int officerIdx);
+    void applyCrewMultipliers();
+
+    // Active Tactical Ship Abilities
+    bool triggerDamageControl();
+    bool triggerSonarPing();
+
+    // Campaign Save / Load
+    bool saveCampaign(const std::string& filepath);
+    bool loadCampaign(const std::string& filepath);
 
     // Advance 3D simulation by dt seconds
     void step(float dt);
@@ -85,12 +108,23 @@ public:
     std::vector<SimAudioEvent> pendingAudioEvents;
     std::vector<BountyContract> contracts;
 
-    // Player Resources & Progression
+    // Player Resources, Crew Ranks & Progression
     int playerGold = 450;
     int playerAether = 24;
     int leviathansSlain = 0;
     int piratesSunk = 0;
     int blocksDestroyedStat = 0;
+    int prestigeHuntTier = 1;
+    std::array<int, 5> officerRanks{{0, 0, 0, 0, 0}}; // 0..3 per officer
+
+    // Tactical Ability Cooldowns & States
+    float damageControlCooldown = 0.0f;
+    float sonarPingCooldown = 0.0f;
+    float sonarMarkTimer = 0.0f;
+    float sonarWaveRadius = 0.0f;
+    Vec3 sonarWaveOrigin{0.0f, 0.0f, 0.0f};
+    int skyAtmospherePreset = 0; // 0: Golden Dawn, 1: High Noon, 2: Crimson Dusk, 3: Starlit Night
+
     float cameraTrauma = 0.0f;
     bool isSandboxMode = false;
     bool playerAutopilot = false;

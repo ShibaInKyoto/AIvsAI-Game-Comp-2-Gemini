@@ -7,7 +7,8 @@
 namespace aethernaut {
 
 void DrydockEditor::update(World& world, const Camera3D& camera, int screenW, int screenH, bool& outExitDrydock) {
-    // Keyboard shortcuts for block selection (1..9, 0, -, =)
+    (void)screenW;
+    // Keyboard shortcuts for block selection (1..9, 0, -, =, and F1..F4 for advanced blocks)
     if (IsKeyPressed(KEY_ONE))   selectedBlock = BlockId::WoodHull;
     if (IsKeyPressed(KEY_TWO))   selectedBlock = BlockId::IronArmor;
     if (IsKeyPressed(KEY_THREE)) selectedBlock = BlockId::LiftBalloon;
@@ -20,6 +21,10 @@ void DrydockEditor::update(World& world, const Camera3D& camera, int screenW, in
     if (IsKeyPressed(KEY_ZERO))  selectedBlock = BlockId::FlakTurret;
     if (IsKeyPressed(KEY_MINUS)) selectedBlock = BlockId::RepairCrane;
     if (IsKeyPressed(KEY_EQUAL)) selectedBlock = BlockId::HelmBridge;
+    if (IsKeyPressed(KEY_LEFT_BRACKET))  selectedBlock = BlockId::OrichalcumArmor;
+    if (IsKeyPressed(KEY_RIGHT_BRACKET)) selectedBlock = BlockId::ShieldProjector;
+    if (IsKeyPressed(KEY_SEMICOLON))     selectedBlock = BlockId::PlasmaLance;
+    if (IsKeyPressed(KEY_APOSTROPHE))    selectedBlock = BlockId::AfterburnerJet;
 
     if (IsKeyPressed(KEY_R)) {
         selectedOrientation = (selectedOrientation + 1) % 4;
@@ -51,7 +56,7 @@ void DrydockEditor::update(World& world, const Camera3D& camera, int screenW, in
     // Ignore 3D raycast if cursor is over top/left/bottom UI panels
     bool overUI = (mousePos.y > static_cast<float>(screenH - 125)) ||
                   (mousePos.y < 64.0f) ||
-                  (mousePos.x < 368.0f && mousePos.y < 580.0f);
+                  (mousePos.x < 368.0f && mousePos.y < 595.0f);
 
     ghostPreview.active = false;
     ghostPreview.showEngineeringGizmos = showEngineeringGizmos;
@@ -137,70 +142,73 @@ void DrydockEditor::drawUI(World& world, int screenW, int screenH, bool& outExit
     DrawRectangle(0, 0, screenW, 58, Color{10, 16, 28, 240});
     DrawLine(0, 58, screenW, 58, Color{55, 195, 235, 180});
 
-    DrawText("3D SKY-DRYDOCK & AIRSHIP ARCHITECT", 20, 11, 20, Color{65, 225, 255, 255});
-    DrawText("LMB: Place | RMB: Remove | [R] Rotate | [M] X-Mirror | [Q/E or RMB Drag] Orbit Camera", 20, 35, 12, Color{175, 195, 215, 255});
+    DrawText("3D SKY-DRYDOCK & AIRSHIP ARCHITECT", 18, 11, 18, Color{65, 225, 255, 255});
+    DrawText("LMB: Place | RMB: Remove | [R] Rotate | [M] X-Mirror | [Q/E or RMB Drag] Orbit", 18, 34, 11, Color{175, 195, 215, 255});
 
     // Blueprint Preset Buttons on Top Right
     int bpCount = ShipBlueprints::count();
-    int btnX = screenW - (bpCount * 130) - 142;
+    int btnW = 108;
+    int btnX = screenW - (bpCount * (btnW + 4)) - 132;
     for (int i = 0; i < bpCount; ++i) {
         ShipBlueprintInfo info = ShipBlueprints::getInfo(i);
-        Rectangle r{static_cast<float>(btnX + i * 130), 12.0f, 124.0f, 34.0f};
+        Rectangle r{static_cast<float>(btnX + i * (btnW + 4)), 12.0f, static_cast<float>(btnW), 34.0f};
         bool hover = CheckCollisionPointRec(mouse, r);
         DrawRectangleRec(r, hover ? Color{35, 95, 145, 245} : Color{22, 36, 58, 235});
         DrawRectangleLinesEx(r, 1.5f, Color{65, 185, 235, 200});
-        DrawText(info.name, static_cast<int>(r.x + 7), static_cast<int>(r.y + 11), 12, WHITE);
+        DrawText(info.name, static_cast<int>(r.x + 6), static_cast<int>(r.y + 11), 11, WHITE);
         if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             ShipBlueprints::applyBlueprint(ship, i);
+            world.applyCrewMultipliers();
         }
     }
 
     // Launch / Undock Button
-    Rectangle launchBtn{static_cast<float>(screenW - 135), 10.0f, 120.0f, 38.0f};
+    Rectangle launchBtn{static_cast<float>(screenW - 126), 10.0f, 114.0f, 38.0f};
     bool hoverLaunch = CheckCollisionPointRec(mouse, launchBtn);
     DrawRectangleRec(launchBtn, hoverLaunch ? Color{45, 195, 115, 255} : Color{28, 155, 88, 245});
     DrawRectangleLinesEx(launchBtn, 2.0f, Color{125, 255, 175, 255});
-    DrawText("UNDOCK [B]", static_cast<int>(launchBtn.x + 16), static_cast<int>(launchBtn.y + 11), 15, WHITE);
+    DrawText("UNDOCK [B]", static_cast<int>(launchBtn.x + 12), static_cast<int>(launchBtn.y + 11), 14, WHITE);
     if (hoverLaunch && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         outExitDrydock = true;
     }
 
     // 2. Left Engineering & Buoyancy Diagnostics Panel
-    DrawRectangle(16, 70, 348, 502, Color{11, 18, 31, 236});
-    DrawRectangleLinesEx({16.0f, 70.0f, 348.0f, 502.0f}, 1.5f, Color{55, 165, 215, 185});
+    DrawRectangle(16, 68, 348, 514, Color{11, 18, 31, 236});
+    DrawRectangleLinesEx({16.0f, 68.0f, 348.0f, 514.0f}, 1.5f, Color{55, 165, 215, 185});
 
-    DrawText("VESSEL ENGINEERING METRICS", 28, 82, 16, Color{255, 205, 75, 255});
+    DrawText("VESSEL ENGINEERING METRICS", 28, 80, 16, Color{255, 205, 75, 255});
 
     char buf[160];
     std::snprintf(buf, sizeof(buf), "Gold Treasury: %d G   |   Aetherium: %d", world.playerGold, world.playerAether);
-    DrawText(buf, 28, 108, 14, Color{95, 240, 185, 255});
+    DrawText(buf, 28, 104, 14, Color{95, 240, 185, 255});
 
     float weightForce = ship.totalMass * 3.2f;
     float liftRatio = ship.totalLift / std::max(1.0f, weightForce);
-    std::snprintf(buf, sizeof(buf), "Total Mass: %.0f tons (%d Voxel Blocks)", ship.totalMass, ship.occupiedBlockCount);
-    DrawText(buf, 28, 134, 13, WHITE);
+    std::snprintf(buf, sizeof(buf), "Mass: %.0ft (%d Blocks)  |  Shield Dome: %.0f HP",
+                  ship.totalMass, ship.occupiedBlockCount, ship.maxShieldHp);
+    DrawText(buf, 28, 128, 12, WHITE);
 
     // Buoyancy Lift Gauge Bar
     std::snprintf(buf, sizeof(buf), "Buoyancy Lift: %.0f kN (%.0f%% Equilibrium)", ship.totalLift, liftRatio * 100.0f);
-    DrawText(buf, 28, 156, 13, (liftRatio >= 1.0f) ? Color{85, 245, 155, 255} : Color{255, 95, 95, 255});
-    DrawRectangle(28, 174, 320, 8, Color{20, 32, 48, 255});
+    DrawText(buf, 28, 150, 12, (liftRatio >= 1.0f) ? Color{85, 245, 155, 255} : Color{255, 95, 95, 255});
+    DrawRectangle(28, 166, 320, 8, Color{20, 32, 48, 255});
     float clampedLiftBar = std::clamp(liftRatio / 1.5f, 0.0f, 1.0f);
-    DrawRectangle(28, 174, static_cast<int>(320.0f * clampedLiftBar), 8,
+    DrawRectangle(28, 166, static_cast<int>(320.0f * clampedLiftBar), 8,
                   (liftRatio >= 1.0f) ? Color{65, 235, 145, 255} : Color{245, 85, 85, 255});
 
-    std::snprintf(buf, sizeof(buf), "Forward Thrust: %.0f kN (%d Brass Turbines)", ship.totalThrust, ship.propellerCount);
-    DrawText(buf, 28, 192, 13, WHITE);
+    std::snprintf(buf, sizeof(buf), "Forward Thrust: %.0f kN (%d Prop/Jets)", ship.totalThrust, ship.propellerCount);
+    DrawText(buf, 28, 184, 12, WHITE);
 
-    std::snprintf(buf, sizeof(buf), "Yaw Authority: %.0f kNm  |  Armament: %dG / %dH",
+    std::snprintf(buf, sizeof(buf), "Yaw Authority: %.0f kNm  |  Weapons: %dG / %dH",
                   ship.totalTurnTorque, ship.cannonCount, ship.harpoonCount);
-    DrawText(buf, 28, 214, 13, Color{235, 205, 125, 255});
+    DrawText(buf, 28, 204, 12, Color{235, 205, 125, 255});
 
     // Power Grid Gauge Bar
     std::snprintf(buf, sizeof(buf), "Aether Power Grid: %.0f / %.0f MW (%.0f%%)",
                   ship.totalPowerGen, ship.totalPowerDraw, ship.powerEfficiency * 100.0f);
-    DrawText(buf, 28, 236, 13, (ship.powerEfficiency >= 0.99f) ? Color{85, 225, 255, 255} : Color{255, 175, 65, 255});
-    DrawRectangle(28, 254, 320, 8, Color{20, 32, 48, 255});
-    DrawRectangle(28, 254, static_cast<int>(320.0f * std::clamp(ship.powerEfficiency, 0.0f, 1.0f)), 8,
+    DrawText(buf, 28, 226, 12, (ship.powerEfficiency >= 0.99f) ? Color{85, 225, 255, 255} : Color{255, 175, 65, 255});
+    DrawRectangle(28, 242, 320, 8, Color{20, 32, 48, 255});
+    DrawRectangle(28, 242, static_cast<int>(320.0f * std::clamp(ship.powerEfficiency, 0.0f, 1.0f)), 8,
                   (ship.powerEfficiency >= 0.99f) ? Color{65, 215, 255, 255} : Color{255, 165, 55, 255});
 
     float comColOffset = std::sqrt(
@@ -209,29 +217,29 @@ void DrydockEditor::drawUI(World& world, int screenW, int screenH, bool& outExit
     );
     std::snprintf(buf, sizeof(buf), "CoM/CoL Trim Offset: %.2fm (%s)",
                   comColOffset, (comColOffset < 1.5f) ? "BALANCED" : "LISTING TRIM");
-    DrawText(buf, 28, 272, 13, (comColOffset < 1.5f) ? Color{115, 245, 185, 255} : Color{255, 195, 75, 255});
+    DrawText(buf, 28, 260, 12, (comColOffset < 1.5f) ? Color{115, 245, 185, 255} : Color{255, 195, 75, 255});
 
     std::snprintf(buf, sizeof(buf), "X-Symmetry [M]: %s  |  Gizmos [G]: %s",
                   symmetryMirrorX ? "ON" : "OFF", showEngineeringGizmos ? "ON" : "OFF");
-    DrawText(buf, 28, 294, 13, symmetryMirrorX ? Color{75, 245, 185, 255} : Color{185, 185, 185, 255});
+    DrawText(buf, 28, 282, 12, symmetryMirrorX ? Color{75, 245, 185, 255} : Color{185, 185, 185, 255});
 
     const char* orientNames[4] = {"North (-Z Bow)", "East (+X Stbd)", "South (+Z Stern)", "West (-X Port)"};
     std::snprintf(buf, sizeof(buf), "Block Facing [R]: %s", orientNames[selectedOrientation % 4]);
-    DrawText(buf, 28, 316, 13, Color{195, 225, 255, 255});
+    DrawText(buf, 28, 304, 12, Color{195, 225, 255, 255});
 
     // Repair All Button inside Drydock
-    Rectangle repBtn{28.0f, 342.0f, 320.0f, 32.0f};
+    Rectangle repBtn{28.0f, 330.0f, 320.0f, 32.0f};
     bool hoverRep = CheckCollisionPointRec(mouse, repBtn);
     DrawRectangleRec(repBtn, hoverRep ? Color{45, 135, 185, 255} : Color{28, 85, 125, 235});
     DrawRectangleLinesEx(repBtn, 1.5f, Color{95, 215, 255, 255});
-    DrawText("REPAIR ALL HULL & LIFT CELLS (FREE)", 54, 352, 12, WHITE);
+    DrawText("REPAIR ALL HULL, SHIELD & LIFT CELLS (FREE)", 38, 340, 12, WHITE);
     if (hoverRep && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         ship.triggerEmergencyRepair(9999.0f);
     }
 
     // Save / Load Custom Blueprint Buttons ([F5] / [F9])
-    Rectangle saveBtn{28.0f, 382.0f, 155.0f, 30.0f};
-    Rectangle loadBtn{193.0f, 382.0f, 155.0f, 30.0f};
+    Rectangle saveBtn{28.0f, 370.0f, 155.0f, 30.0f};
+    Rectangle loadBtn{193.0f, 370.0f, 155.0f, 30.0f};
     bool hoverSave = CheckCollisionPointRec(mouse, saveBtn);
     bool hoverLoad = CheckCollisionPointRec(mouse, loadBtn);
     DrawRectangleRec(saveBtn, hoverSave ? Color{45, 155, 115, 255} : Color{24, 95, 72, 235});
@@ -249,48 +257,52 @@ void DrydockEditor::drawUI(World& world, int screenW, int screenH, bool& outExit
 
     // Selected Block Inspector
     const BlockSpec& selSpec = BlockRegistry::get(selectedBlock);
-    DrawLine(28, 422, 348, 422, Color{55, 125, 165, 160});
-    DrawText(selSpec.name, 28, 430, 15, Color{65, 235, 255, 255});
+    DrawLine(28, 412, 348, 412, Color{55, 125, 165, 160});
+    DrawText(selSpec.name, 28, 420, 15, Color{65, 235, 255, 255});
     std::snprintf(buf, sizeof(buf), "Category: %s  |  Mass: %.0ft  |  Max HP: %.0f",
                   selSpec.category, selSpec.mass, selSpec.maxHp);
-    DrawText(buf, 28, 452, 12, Color{195, 215, 235, 255});
+    DrawText(buf, 28, 442, 12, Color{195, 215, 235, 255});
     std::snprintf(buf, sizeof(buf), "Build Cost: %d Gold, %d Aetherium",
                   selSpec.goldCost, selSpec.aetherCost);
-    DrawText(buf, 28, 472, 12, Color{255, 215, 95, 255});
+    DrawText(buf, 28, 462, 12, Color{255, 215, 95, 255});
 
-    // Truncate or fit description cleanly inside 320px
-    DrawText(selSpec.description, 28, 494, 11, Color{165, 188, 210, 255});
+    DrawText(selSpec.description, 28, 484, 11, Color{165, 188, 210, 255});
 
-    // 3. Bottom 12-Block Engineering Hotbar
-    static const char* kShortTitles[13] = {
+    // 3. Bottom 16-Block Engineering Hotbar
+    static const char* kShortTitles[17] = {
         "",
         "Timber Hull",
-        "Iron Bulkhead",
+        "Iron Plate",
         "Aether Lift",
         "Aether Core",
         "Brass Prop",
         "Gyro Rudder",
-        "Siege Cannon",
-        "Harpoon Winch",
-        "Voltaic Spire",
-        "Flak Turret",
+        "Siege Gun",
+        "Harpoon",
+        "Tesla Spire",
+        "Flak Gun",
         "Repair Rig",
-        "Helm Bridge"
+        "Helm Bridge",
+        "Orichalcum",
+        "Shield Dome",
+        "Plasma Lance",
+        "Ramjet Boost"
     };
-    static const char* kKeyLabels[13] = {
-        "", "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]", "[0]", "[-]", "[=]"
+    static const char* kKeyLabels[17] = {
+        "", "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]", "[0]", "[-]", "[=]", "[[]", "[]]", "[;]", "[']"
     };
 
-    int barW = 12 * 102 + 16;
+    int slotPitch = 77;
+    int barW = 16 * slotPitch + 12;
     int barX = (screenW - barW) / 2;
-    int barY = screenH - 110;
-    DrawRectangle(barX, barY, barW, 98, Color{10, 16, 28, 242});
-    DrawRectangleLinesEx({static_cast<float>(barX), static_cast<float>(barY), static_cast<float>(barW), 98.0f}, 1.5f, Color{65, 175, 225, 195});
+    int barY = screenH - 108;
+    DrawRectangle(barX, barY, barW, 96, Color{10, 16, 28, 242});
+    DrawRectangleLinesEx({static_cast<float>(barX), static_cast<float>(barY), static_cast<float>(barW), 96.0f}, 1.5f, Color{65, 175, 225, 195});
 
-    for (int i = 1; i <= 12; ++i) {
+    for (int i = 1; i <= 16; ++i) {
         BlockId bid = static_cast<BlockId>(i);
         const BlockSpec& sp = BlockRegistry::get(bid);
-        Rectangle slot{static_cast<float>(barX + 10 + (i - 1) * 102), static_cast<float>(barY + 8), 94.0f, 82.0f};
+        Rectangle slot{static_cast<float>(barX + 8 + (i - 1) * slotPitch), static_cast<float>(barY + 8), 72.0f, 80.0f};
         bool isSel = (selectedBlock == bid);
         bool hover = CheckCollisionPointRec(mouse, slot);
 
@@ -298,21 +310,21 @@ void DrydockEditor::drawUI(World& world, int screenW, int screenH, bool& outExit
         DrawRectangleLinesEx(slot, isSel ? 2.5f : 1.0f, isSel ? Color{85, 245, 255, 255} : Color{65, 95, 135, 180});
 
         // Color swatch indicator
-        DrawRectangle(static_cast<int>(slot.x + 8), static_cast<int>(slot.y + 8), 18, 18,
+        DrawRectangle(static_cast<int>(slot.x + 6), static_cast<int>(slot.y + 6), 16, 16,
                       Color{sp.primaryColor.r, sp.primaryColor.g, sp.primaryColor.b, 255});
-        DrawRectangleLines(static_cast<int>(slot.x + 8), static_cast<int>(slot.y + 8), 18, 18,
+        DrawRectangleLines(static_cast<int>(slot.x + 6), static_cast<int>(slot.y + 6), 16, 16,
                            Color{sp.accentColor.r, sp.accentColor.g, sp.accentColor.b, 255});
 
-        DrawText(kKeyLabels[i], static_cast<int>(slot.x + 64), static_cast<int>(slot.y + 8), 12, Color{165, 185, 205, 255});
-        DrawText(kShortTitles[i], static_cast<int>(slot.x + 7), static_cast<int>(slot.y + 34), 11, WHITE);
-        DrawText(sp.category, static_cast<int>(slot.x + 7), static_cast<int>(slot.y + 49), 10, Color{125, 215, 255, 255});
+        DrawText(kKeyLabels[i], static_cast<int>(slot.x + 42), static_cast<int>(slot.y + 7), 11, Color{165, 185, 205, 255});
+        DrawText(kShortTitles[i], static_cast<int>(slot.x + 5), static_cast<int>(slot.y + 30), 10, WHITE);
+        DrawText(sp.category, static_cast<int>(slot.x + 5), static_cast<int>(slot.y + 45), 9, Color{125, 215, 255, 255});
 
         if (sp.aetherCost > 0) {
-            std::snprintf(buf, sizeof(buf), "%dG + %dAe", sp.goldCost, sp.aetherCost);
+            std::snprintf(buf, sizeof(buf), "%dG+%dAe", sp.goldCost, sp.aetherCost);
         } else {
             std::snprintf(buf, sizeof(buf), "%d Gold", sp.goldCost);
         }
-        DrawText(buf, static_cast<int>(slot.x + 7), static_cast<int>(slot.y + 64), 11, Color{255, 215, 85, 255});
+        DrawText(buf, static_cast<int>(slot.x + 5), static_cast<int>(slot.y + 62), 10, Color{255, 215, 85, 255});
 
         if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             selectedBlock = bid;

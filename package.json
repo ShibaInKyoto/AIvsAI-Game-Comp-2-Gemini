@@ -1,0 +1,23 @@
+{
+  "name": "aethernaut-game",
+  "version": "1.0.0",
+  "description": "AETHERNAUT — 3D Sky-Fleet Architect & Colossal Leviathan Hunter",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "/tmp/build-linux/bin/aethernaut_tests",
+    "benchmark": "/tmp/build-linux/bin/aethernaut_benchmark"
+  },
+  "keywords": [
+    "c++20",
+    "raylib",
+    "opengl",
+    "airship",
+    "voxel",
+    "game-comp",
+    "windows-x64"
+  ],
+  "author": "Aethernaut Dev Team",
+  "license": "MIT"
+}

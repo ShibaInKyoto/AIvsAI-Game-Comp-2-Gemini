@@ -159,6 +159,10 @@ void Airship::recomputeMetrics() {
     harpoonCount = 0;
     propellerCount = 0;
     liftCellCount = 0;
+    shieldProjectorCount = 0;
+
+    float computedShieldMax = 0.0f;
+    int afterburnerCount = 0;
 
     Vec3 weightedMassSum{0.0f, 0.0f, 0.0f};
     Vec3 weightedLiftSum{0.0f, 0.0f, 0.0f};
@@ -191,18 +195,28 @@ void Airship::recomputeMetrics() {
                 totalPowerDraw += spec.powerDraw;
                 totalHp += std::max(0.0f, cell.hp);
                 totalMaxHp += cell.maxHp;
+                computedShieldMax += spec.shieldCapacity * healthRatio;
 
-                if (cell.id == BlockId::DeckCannon || cell.id == BlockId::FlakTurret || cell.id == BlockId::TeslaCoil) {
+                if (cell.id == BlockId::DeckCannon ||
+                    cell.id == BlockId::FlakTurret ||
+                    cell.id == BlockId::TeslaCoil ||
+                    cell.id == BlockId::PlasmaLance) {
                     cannonCount++;
                 }
                 if (cell.id == BlockId::HarpoonWinch) {
                     harpoonCount++;
                 }
-                if (cell.id == BlockId::SteamPropeller) {
+                if (cell.id == BlockId::SteamPropeller || cell.id == BlockId::AfterburnerJet) {
                     propellerCount++;
+                }
+                if (cell.id == BlockId::AfterburnerJet) {
+                    afterburnerCount++;
                 }
                 if (cell.id == BlockId::LiftBalloon || cell.id == BlockId::AetherCore) {
                     liftCellCount++;
+                }
+                if (cell.id == BlockId::ShieldProjector) {
+                    shieldProjectorCount++;
                 }
                 if (cell.id == BlockId::HelmBridge || cell.id == BlockId::AetherCore) {
                     hasCommandOrCore = true;
@@ -234,6 +248,17 @@ void Airship::recomputeMetrics() {
     } else {
         powerEfficiency = std::clamp(totalPowerGen / totalPowerDraw, 0.35f, 1.25f);
     }
+
+    float prevMaxShield = maxShieldHp;
+    maxShieldHp = computedShieldMax * shieldMultiplier;
+    if (prevMaxShield <= 1.0f && maxShieldHp > 0.0f) {
+        shieldHp = maxShieldHp;
+    } else {
+        shieldHp = std::min(shieldHp, maxShieldHp);
+    }
+
+    maxAfterburnerFuel = 100.0f + static_cast<float>(afterburnerCount) * 35.0f;
+    afterburnerFuel = std::min(afterburnerFuel, maxAfterburnerFuel);
 
     boundingRadius = std::sqrt(maxRadiusSq) + kVoxelSize;
 
@@ -330,6 +355,21 @@ int Airship::severDisconnectedBlocks(std::vector<DetachedDebris>& outDebris) {
     return severedCount;
 }
 
+float Airship::absorbShieldDamage(float incomingDamage) {
+    if (shieldHp <= 0.0f || incomingDamage <= 0.0f) {
+        return incomingDamage;
+    }
+    shieldRechargeDelay = 3.8f;
+    shieldHitFlashTimer = 0.45f;
+    if (shieldHp >= incomingDamage) {
+        shieldHp -= incomingDamage;
+        return 0.0f;
+    }
+    float leftover = incomingDamage - shieldHp;
+    shieldHp = 0.0f;
+    return leftover;
+}
+
 int Airship::applyDamageAtWorldPos(
     const Vec3& impactWorldPos,
     float baseDamage,
@@ -337,6 +377,11 @@ int Airship::applyDamageAtWorldPos(
     bool canIgniteFire,
     std::vector<DetachedDebris>& outDebris
 ) {
+    float hullDamage = absorbShieldDamage(baseDamage);
+    if (hullDamage <= 0.05f) {
+        return 0;
+    }
+
     Vec3 localImpact = worldToLocalPos(impactWorldPos);
     int destroyedBlocks = 0;
     float radiusSq = splashRadius * splashRadius;
@@ -356,7 +401,7 @@ int Airship::applyDamageAtWorldPos(
                 float dist = std::sqrt(distSq);
                 float falloff = 1.0f - std::clamp(dist / std::max(0.1f, splashRadius), 0.0f, 0.85f);
                 const BlockSpec& spec = BlockRegistry::get(cell.id);
-                float effectiveDmg = std::max(2.0f, baseDamage * falloff - spec.armor);
+                float effectiveDmg = std::max(2.0f, hullDamage * falloff - spec.armor);
                 cell.hp -= effectiveDmg;
 
                 if (canIgniteFire && cell.hp > 0.0f && (cell.id == BlockId::WoodHull || cell.id == BlockId::LiftBalloon)) {
@@ -404,14 +449,35 @@ void Airship::updatePhysics(
         return;
     }
 
-    // 1. Update Propeller spin visual
-    float spinSpeed = 4.0f + std::abs(throttleInput) * 18.0f * powerEfficiency;
+    // 1. Update Shield Dome Recharge & Hit Flash
+    if (shieldHitFlashTimer > 0.0f) {
+        shieldHitFlashTimer = std::max(0.0f, shieldHitFlashTimer - dt);
+    }
+    if (shieldRechargeDelay > 0.0f) {
+        shieldRechargeDelay = std::max(0.0f, shieldRechargeDelay - dt);
+    } else if (shieldHp < maxShieldHp) {
+        float shieldRegen = (18.0f + static_cast<float>(shieldProjectorCount) * 14.0f) * powerEfficiency * shieldMultiplier * dt;
+        shieldHp = std::min(maxShieldHp, shieldHp + shieldRegen);
+    }
+
+    // 2. Update Afterburner Overdrive Fuel & State
+    if (afterburnerInput && afterburnerFuel > 2.0f && std::abs(throttleInput) > 0.1f) {
+        isBoosting = true;
+        afterburnerFuel = std::max(0.0f, afterburnerFuel - 28.0f * dt);
+    } else {
+        isBoosting = false;
+        afterburnerFuel = std::min(maxAfterburnerFuel, afterburnerFuel + 16.0f * dt);
+    }
+
+    // 3. Update Propeller spin visual
+    float boostSpin = isBoosting ? 16.0f : 0.0f;
+    float spinSpeed = 4.0f + (std::abs(throttleInput) * 18.0f + boostSpin) * powerEfficiency;
     propellerSpinAngle += spinSpeed * dt;
     if (propellerSpinAngle > kTwoPi) {
         propellerSpinAngle -= kTwoPi;
     }
 
-    // 2. Update Automated Repair Cranes, Fire Damage, and Turret Tracking
+    // 4. Update Automated Repair Cranes, Fire Damage, and Turret Tracking
     int activeRepairCranes = 0;
     for (const auto& c : grid_) {
         if (c.id == BlockId::RepairCrane && c.hp > 0.0f) {
@@ -419,7 +485,7 @@ void Airship::updatePhysics(
         }
     }
 
-    float repairRate = static_cast<float>(activeRepairCranes) * 6.5f * powerEfficiency * dt;
+    float repairRate = static_cast<float>(activeRepairCranes) * 6.5f * powerEfficiency * repairMultiplier * dt;
     Vec3 targetWorld{targetAimWorldX, targetAimWorldY, targetAimWorldZ};
     Vec3 targetLocal = worldToLocalPos(targetWorld);
 
@@ -450,6 +516,7 @@ void Airship::updatePhysics(
                 if (cell.id == BlockId::DeckCannon ||
                     cell.id == BlockId::FlakTurret ||
                     cell.id == BlockId::TeslaCoil ||
+                    cell.id == BlockId::PlasmaLance ||
                     cell.id == BlockId::HarpoonWinch) {
                     Vec3 bPos = gridToLocalPos(gx, gy, gz);
                     Vec3 toTarget = targetLocal - bPos;
@@ -465,11 +532,12 @@ void Airship::updatePhysics(
         recomputeMetrics();
     }
 
-    // 3. Forward Propulsion & Rudder Yaw Torque
+    // 5. Forward Propulsion & Rudder Yaw Torque
     Quat qHeading = Quat::fromAxisAngle({0.0f, 1.0f, 0.0f}, yaw);
     Vec3 forwardDir = qHeading.forward();
 
-    float effectiveThrust = totalThrust * powerEfficiency * throttleInput;
+    float boostFactor = isBoosting ? 1.75f : 1.0f;
+    float effectiveThrust = totalThrust * powerEfficiency * thrustMultiplier * boostFactor * throttleInput;
     float accelForward = effectiveThrust / std::max(25.0f, totalMass);
     velocity += forwardDir * (accelForward * 9.5f * dt);
 
@@ -477,12 +545,12 @@ void Airship::updatePhysics(
     velocity += windVector * (0.35f * dt);
 
     // Angular Yaw Authority from GyroRudders + Propellers
-    float yawAccel = ( (totalTurnTorque + 40.0f) / std::max(40.0f, totalMass) ) * rudderInput * 1.65f;
+    float yawAccel = ((totalTurnTorque + 40.0f) / std::max(40.0f, totalMass)) * turnMultiplier * rudderInput * 1.65f;
     angularVelYaw += yawAccel * dt;
     angularVelYaw *= std::pow(0.18f, dt); // Rotational damping
     yaw += angularVelYaw * dt;
 
-    // 4. Vertical Buoyancy & Altitude Control
+    // 6. Vertical Buoyancy & Altitude Control
     if (isSinking) {
         targetCruiseAltitude = std::max(-150.0f, targetCruiseAltitude - 28.0f * dt);
     } else {
@@ -498,14 +566,14 @@ void Airship::updatePhysics(
     }
     velocity.y += verticalSpringForce * dt;
 
-    // 5. Aerodynamic Drag
+    // 7. Aerodynamic Drag
     velocity.x *= std::pow(0.45f, dt);
     velocity.z *= std::pow(0.45f, dt);
     velocity.y *= std::pow(0.35f, dt);
 
     position += velocity * dt;
 
-    // 6. Realistic Pitch & Roll Listing from Asymmetric Center-of-Lift vs Center-of-Mass + Turn Banking
+    // 8. Realistic Pitch & Roll Listing from Asymmetric Center-of-Lift vs Center-of-Mass + Turn Banking
     Vec3 liftOffset = centerOfLiftLocal - centerOfMassLocal;
     float imbalanceRoll = std::clamp(-liftOffset.x * 0.08f, -0.45f, 0.45f);
     float imbalancePitch = std::clamp(liftOffset.z * 0.05f, -0.35f, 0.35f);
@@ -543,7 +611,8 @@ void Airship::fireWeapons(
 
                 bool isArtillery = (cell.id == BlockId::DeckCannon ||
                                     cell.id == BlockId::FlakTurret ||
-                                    cell.id == BlockId::TeslaCoil);
+                                    cell.id == BlockId::TeslaCoil ||
+                                    cell.id == BlockId::PlasmaLance);
                 bool isHarpoon = (cell.id == BlockId::HarpoonWinch);
 
                 if ((fireCannons && isArtillery) || (fireHarpoons && isHarpoon)) {
@@ -570,10 +639,10 @@ void Airship::fireWeapons(
                     req.ownerShipId = id_;
                     outProjectiles.push_back(req);
 
-                    cell.weaponCooldown = spec.weaponCooldown / std::max(0.5f, powerEfficiency);
+                    cell.weaponCooldown = spec.weaponCooldown / std::max(0.5f, powerEfficiency * reloadMultiplier);
 
                     // Apply physical cannon recoil impulse to the ship!
-                    if (cell.id == BlockId::DeckCannon) {
+                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::PlasmaLance) {
                         velocity -= aimDir * (18.0f / std::max(50.0f, totalMass));
                     }
                 }
@@ -589,6 +658,7 @@ void Airship::triggerEmergencyRepair(float amount) {
             cell.fireTimer = 0.0f;
         }
     }
+    shieldHp = std::min(maxShieldHp, shieldHp + amount * 0.8f);
     recomputeMetrics();
 }
 

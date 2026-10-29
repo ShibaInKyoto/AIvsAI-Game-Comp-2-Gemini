@@ -35,10 +35,17 @@ public:
     );
 
     void drawWorldMapModal(
-        const World& world,
+        World& world,
         int screenW,
         int screenH,
         bool& inoutShowMap
+    );
+
+    void drawCrewModal(
+        World& world,
+        int screenW,
+        int screenH,
+        bool& inoutShowCrew
     );
 
     void drawCodexModal(

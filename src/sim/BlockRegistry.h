@@ -21,7 +21,11 @@ enum class BlockId : uint8_t {
     FlakTurret = 10,
     RepairCrane = 11,
     HelmBridge = 12,
-    Count = 13
+    OrichalcumArmor = 13,
+    ShieldProjector = 14,
+    PlasmaLance = 15,
+    AfterburnerJet = 16,
+    Count = 17
 };
 
 struct ColorRGB {
@@ -38,11 +42,11 @@ struct BlockSpec {
     float mass = 0.0f;
     float maxHp = 100.0f;
     float armor = 0.0f;
-    float liftForce = 0.0f;     // Upward buoyancy force
-    float thrustForce = 0.0f;   // Forward propulsion force
-    float turnTorque = 0.0f;    // Yaw & stabilization authority
-    float powerGen = 0.0f;      // Reactor output
-    float powerDraw = 0.0f;     // Power consumption
+    float liftForce = 0.0f;      // Upward buoyancy force
+    float thrustForce = 0.0f;    // Forward propulsion force
+    float turnTorque = 0.0f;     // Yaw & stabilization authority
+    float powerGen = 0.0f;       // Reactor output
+    float powerDraw = 0.0f;      // Power consumption
     float weaponDamage = 0.0f;
     float weaponCooldown = 1.0f;
     float projectileSpeed = 120.0f;
@@ -51,6 +55,7 @@ struct BlockSpec {
     ColorRGB primaryColor{200, 200, 200};
     ColorRGB accentColor{100, 100, 100};
     bool isEmissive = false;
+    float shieldCapacity = 0.0f; // Energy shield dome contribution
 };
 
 class BlockRegistry {

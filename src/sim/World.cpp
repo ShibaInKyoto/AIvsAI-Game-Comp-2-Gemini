@@ -1,10 +1,188 @@
 #include "sim/World.h"
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 namespace aethernaut {
 
+namespace {
+
+const std::array<OfficerSpec, 5> kOfficerSpecs = {{
+    {"Master Gunner Vance", "Ordnance & Ballistics", "+16% Weapon Reload Speed & +10% Shell Damage per Rank", 140, 4},
+    {"Chief Engineer Lin", "Aether Core & Shielding", "+25% Shield Dome Capacity & +30% Auto-Repair Speed per Rank", 150, 5},
+    {"Harpoon Master Ahab", "Leviathan Tether Winches", "+35% Cable Break Strength & +30% Winch Reel Speed per Rank", 135, 4},
+    {"Helmsman Kael", "Turbine & Rudder Trim", "+18% Forward Turbine Thrust & +22% Turn Torque per Rank", 125, 3},
+    {"Scholar-Navigator Lyra", "Aetherium Salvage & Lore", "+25% Gold & Aetherium Harvest Yield from Crystals & Bounties", 160, 5}
+}};
+
+} // namespace
+
 World::World() : playerShip(1, "HMS Sky-Breaker", 0), spatialHash_(50.0f) {}
+
+const std::array<OfficerSpec, 5>& World::getOfficerSpecs() {
+    return kOfficerSpecs;
+}
+
+void World::applyCrewMultipliers() {
+    playerShip.reloadMultiplier = 1.0f + 0.16f * static_cast<float>(officerRanks[0]);
+    playerShip.repairMultiplier = 1.0f + 0.30f * static_cast<float>(officerRanks[1]);
+    playerShip.shieldMultiplier = 1.0f + 0.25f * static_cast<float>(officerRanks[1]);
+    playerShip.thrustMultiplier = 1.0f + 0.18f * static_cast<float>(officerRanks[3]);
+    playerShip.turnMultiplier   = 1.0f + 0.22f * static_cast<float>(officerRanks[3]);
+    playerShip.recomputeMetrics();
+}
+
+bool World::upgradeOfficer(int officerIdx) {
+    if (officerIdx < 0 || officerIdx >= 5) {
+        return false;
+    }
+    int currentRank = officerRanks[static_cast<size_t>(officerIdx)];
+    if (currentRank >= 3) {
+        statusBannerText = std::string(kOfficerSpecs[static_cast<size_t>(officerIdx)].name) + " is already at Maximum Rank (III)!";
+        statusBannerTimer = 3.0f;
+        return false;
+    }
+
+    const OfficerSpec& spec = kOfficerSpecs[static_cast<size_t>(officerIdx)];
+    int goldCost = spec.baseGoldCost * (currentRank + 1);
+    int aetherCost = spec.baseAetherCost * (currentRank + 1);
+
+    if (!isSandboxMode && (playerGold < goldCost || playerAether < aetherCost)) {
+        statusBannerText = "Insufficient Resources! Need " + std::to_string(goldCost) + " Gold & " + std::to_string(aetherCost) + " Aetherium.";
+        statusBannerTimer = 3.5f;
+        return false;
+    }
+
+    if (!isSandboxMode) {
+        playerGold -= goldCost;
+        playerAether -= aetherCost;
+    }
+    officerRanks[static_cast<size_t>(officerIdx)] = currentRank + 1;
+    applyCrewMultipliers();
+    playerShip.shieldHp = playerShip.maxShieldHp;
+
+    pendingAudioEvents.push_back({SimAudioEventType::RepairPulse, playerShip.position, 1.2f});
+    statusBannerText = std::string("Promoted ") + spec.name + " to Rank " + std::to_string(currentRank + 1) + "! (" + spec.bonusDesc + ")";
+    statusBannerTimer = 4.5f;
+    return true;
+}
+
+bool World::triggerDamageControl() {
+    if (damageControlCooldown > 0.0f) {
+        statusBannerText = "Emergency Damage Control recharging (" + std::to_string(static_cast<int>( std::ceil(damageControlCooldown))) + "s)...";
+        statusBannerTimer = 2.0f;
+        return false;
+    }
+    damageControlCooldown = 16.0f;
+    float healAmt = 220.0f * playerShip.repairMultiplier;
+    playerShip.triggerEmergencyRepair(healAmt);
+    playerShip.shieldHp = std::min(playerShip.maxShieldHp, playerShip.shieldHp + 180.0f * playerShip.shieldMultiplier);
+
+    pendingAudioEvents.push_back({SimAudioEventType::RepairPulse, playerShip.position, 1.4f});
+    callouts.push_back({playerShip.position + Vec3{0.0f, 8.0f, 0.0f}, "EMERGENCY DAMAGE CONTROL! +HULL & +SHIELD!", {85, 255, 175}, 2.2f, 2.2f});
+    statusBannerText = "Emergency Damage Control Activated! Hull Reconstructed, Fires Doused & Shield Overcharged!";
+    statusBannerTimer = 4.0f;
+    return true;
+}
+
+bool World::triggerSonarPing() {
+    if (sonarPingCooldown > 0.0f) {
+        statusBannerText = "Acoustic Aether-Sonar recharging (" + std::to_string(static_cast<int>(std::ceil(sonarPingCooldown))) + "s)...";
+        statusBannerTimer = 2.0f;
+        return false;
+    }
+    sonarPingCooldown = 14.0f;
+    sonarMarkTimer = 10.0f;
+    sonarWaveRadius = 8.0f;
+    sonarWaveOrigin = playerShip.position;
+
+    pendingAudioEvents.push_back({SimAudioEventType::TeslaDischarge, playerShip.position, 1.1f});
+    callouts.push_back({playerShip.position + Vec3{0.0f, 9.0f, 0.0f}, "AETHER SONAR PING! (+25% TARGET DAMAGE)", {95, 235, 255}, 2.2f, 2.2f});
+    statusBannerText = "Acoustic Aether-Sonar Emitted! All Leviathan Weak Cores Exposed (+25% Crit Damage for 10s)!";
+    statusBannerTimer = 4.5f;
+    return true;
+}
+
+void World::summonApexLeviathan() {
+    LeviathanSpecies sp = static_cast<LeviathanSpecies>((leviathansSlain + prestigeHuntTier) % 4);
+    Vec3 fwd = playerShip.orientationQuat().forward();
+    Vec3 spawnPos = playerShip.position + fwd * 260.0f + Vec3{0.0f, 18.0f, 0.0f};
+    spawnPos.y = std::clamp(spawnPos.y, 115.0f, 175.0f);
+
+    int id = nextEntityId_++;
+    leviathans.emplace_back(id, sp, spawnPos, rng_.nextU32());
+    Leviathan& lev = leviathans.back();
+    float scaleMult = 1.0f + 0.20f * static_cast<float>(prestigeHuntTier - 1);
+    lev.maxTotalHp *= scaleMult;
+    lev.totalHp = lev.maxTotalHp;
+    lev.goldBounty = static_cast<int>(static_cast<float>(lev.goldBounty) * scaleMult);
+    lev.aetherBounty = static_cast<int>(static_cast<float>(lev.aetherBounty) * scaleMult);
+    prestigeHuntTier++;
+
+    pendingAudioEvents.push_back({SimAudioEventType::LeviathanRoar, spawnPos, 1.5f});
+    statusBannerText = "APEX ELDER LEVIATHAN SUMMONED: " + lev.name() + " breached the clouds ahead!";
+    statusBannerTimer = 5.5f;
+}
+
+bool World::saveCampaign(const std::string& filepath) {
+    if (!ShipBlueprints::saveCustomBlueprint(playerShip, filepath + ".ship.aeth")) {
+        return false;
+    }
+    std::ofstream out(filepath, std::ios::out | std::ios::trunc);
+    if (!out.is_open()) {
+        return false;
+    }
+    out << "AETHERNAUT_CAMPAIGN_V1\n";
+    out << "GOLD " << playerGold << "\n";
+    out << "AETHER " << playerAether << "\n";
+    out << "SLAIN " << leviathansSlain << "\n";
+    out << "PIRATES " << piratesSunk << "\n";
+    out << "PRESTIGE " << prestigeHuntTier << "\n";
+    out << "ATMOS " << skyAtmospherePreset << "\n";
+    out << "OFFICERS "
+        << officerRanks[0] << " "
+        << officerRanks[1] << " "
+        << officerRanks[2] << " "
+        << officerRanks[3] << " "
+        << officerRanks[4] << "\n";
+    out << "POS " << playerShip.position.x << " " << playerShip.position.y << " " << playerShip.position.z << "\n";
+    statusBannerText = "Saved Campaign Progress & Flagship Blueprint to Disk!";
+    statusBannerTimer = 4.0f;
+    return out.good();
+}
+
+bool World::loadCampaign(const std::string& filepath) {
+    std::ifstream in(filepath);
+    if (!in.is_open()) {
+        return false;
+    }
+    std::string header;
+    if (!(in >> header) || header != "AETHERNAUT_CAMPAIGN_V1") {
+        return false;
+    }
+    std::string tag;
+    while (in >> tag) {
+        if (tag == "GOLD") in >> playerGold;
+        else if (tag == "AETHER") in >> playerAether;
+        else if (tag == "SLAIN") in >> leviathansSlain;
+        else if (tag == "PIRATES") in >> piratesSunk;
+        else if (tag == "PRESTIGE") in >> prestigeHuntTier;
+        else if (tag == "ATMOS") in >> skyAtmospherePreset;
+        else if (tag == "OFFICERS") {
+            in >> officerRanks[0] >> officerRanks[1] >> officerRanks[2] >> officerRanks[3] >> officerRanks[4];
+        } else if (tag == "POS") {
+            in >> playerShip.position.x >> playerShip.position.y >> playerShip.position.z;
+            playerShip.targetCruiseAltitude = playerShip.position.y;
+        }
+    }
+    ShipBlueprints::loadCustomBlueprint(playerShip, filepath + ".ship.aeth");
+    applyCrewMultipliers();
+    playerShip.shieldHp = playerShip.maxShieldHp;
+    statusBannerText = "Loaded Campaign Save & Flagship from Disk!";
+    statusBannerTimer = 4.0f;
+    return true;
+}
 
 void World::initWorld(uint64_t seed, int playerBlueprintIdx, bool sandboxMode) {
     rng_.seedState(seed, 0xCAFEBABE12345678ULL);
@@ -22,17 +200,26 @@ void World::initWorld(uint64_t seed, int playerBlueprintIdx, bool sandboxMode) {
     pendingAudioEvents.clear();
     contracts.clear();
     cameraTrauma = 0.0f;
+    damageControlCooldown = 0.0f;
+    sonarPingCooldown = 0.0f;
+    sonarMarkTimer = 0.0f;
+    sonarWaveRadius = 0.0f;
+    officerRanks = {0, 0, 0, 0, 0};
+    prestigeHuntTier = 1;
 
     archipelago.generate(seed);
 
     // Initialize Player Flagship moored off New Horizon Drydock's northern sky-pier
     ShipBlueprints::applyBlueprint(playerShip, playerBlueprintIdx);
+    applyCrewMultipliers();
     playerShip.position = {0.0f, 134.0f, -128.0f};
     playerShip.velocity = {0.0f, 0.0f, -8.0f};
     playerShip.yaw = 0.0f;
     playerShip.pitch = 0.0f;
     playerShip.roll = 0.0f;
     playerShip.targetCruiseAltitude = 134.0f;
+    playerShip.shieldHp = playerShip.maxShieldHp;
+    playerShip.afterburnerFuel = playerShip.maxAfterburnerFuel;
     playerShip.isDestroyed = false;
     playerShip.isSinking = false;
 
@@ -117,6 +304,8 @@ void World::firePlayerWeapons(bool cannons, bool harpoons, const Vec3& aimWorldP
     std::vector<MuzzleFireRequest> reqs;
     playerShip.fireWeapons(cannons, harpoons, aimWorldPos, reqs);
 
+    float gunnerDmgMult = 1.0f + 0.10f * static_cast<float>(officerRanks[0]);
+
     for (const auto& r : reqs) {
         Projectile3D proj;
         proj.id = nextEntityId_++;
@@ -127,15 +316,21 @@ void World::firePlayerWeapons(bool cannons, bool harpoons, const Vec3& aimWorldP
         proj.prevPosition = r.muzzleWorldPos;
         proj.velocity = r.aimDirection * r.speed + r.inheritedVelocity;
         proj.launchAnchorLocal = playerShip.worldToLocalPos(r.muzzleWorldPos);
-        proj.damage = r.damage;
+        proj.damage = r.damage * gunnerDmgMult;
         proj.isHarpoon = (r.weaponType == BlockId::HarpoonWinch);
-        proj.gravityScale = (r.weaponType == BlockId::TeslaCoil) ? 0.0f : 1.0f;
-        proj.splashRadius = (r.weaponType == BlockId::DeckCannon) ? 4.8f : 2.8f;
+        proj.gravityScale = (r.weaponType == BlockId::TeslaCoil || r.weaponType == BlockId::PlasmaLance) ? 0.0f : 1.0f;
+        proj.splashRadius = (r.weaponType == BlockId::DeckCannon || r.weaponType == BlockId::PlasmaLance) ? 5.2f : 2.8f;
         proj.lifetime = (r.weaponType == BlockId::TeslaCoil) ? 1.2f : 4.5f;
         proj.maxLifetime = proj.lifetime;
-        proj.color = (r.weaponType == BlockId::TeslaCoil)
-            ? ColorRGB{95, 210, 255}
-            : (proj.isHarpoon ? ColorRGB{235, 175, 65} : ColorRGB{255, 195, 80});
+        if (r.weaponType == BlockId::TeslaCoil) {
+            proj.color = ColorRGB{95, 210, 255};
+        } else if (r.weaponType == BlockId::PlasmaLance) {
+            proj.color = ColorRGB{255, 135, 55};
+        } else if (proj.isHarpoon) {
+            proj.color = ColorRGB{235, 175, 65};
+        } else {
+            proj.color = ColorRGB{255, 195, 80};
+        }
         projectiles.push_back(proj);
     }
 
@@ -186,6 +381,21 @@ void World::step(float dt) {
     if (statusBannerTimer > 0.0f) {
         statusBannerTimer = std::max(0.0f, statusBannerTimer - dt);
     }
+    if (damageControlCooldown > 0.0f) {
+        damageControlCooldown = std::max(0.0f, damageControlCooldown - dt);
+    }
+    if (sonarPingCooldown > 0.0f) {
+        sonarPingCooldown = std::max(0.0f, sonarPingCooldown - dt);
+    }
+    if (sonarMarkTimer > 0.0f) {
+        sonarMarkTimer = std::max(0.0f, sonarMarkTimer - dt);
+    }
+    if (sonarWaveRadius > 0.0f) {
+        sonarWaveRadius += 260.0f * dt;
+        if (sonarWaveRadius > 650.0f) {
+            sonarWaveRadius = 0.0f;
+        }
+    }
     cameraTrauma = std::max(0.0f, cameraTrauma - 1.8f * dt);
 
     archipelago.update(dt);
@@ -220,8 +430,9 @@ void World::step(float dt) {
         float distHoriz = std::sqrt(diff.x * diff.x + diff.z * diff.z);
         if (!isl.discovered && distHoriz < isl.radius + 190.0f) {
             isl.discovered = true;
-            playerGold += 35;
-            statusBannerText = "Discovered Sky-Island: " + isl.name + " (+35 Gold)";
+            int discGold = static_cast<int>(35.0f * (1.0f + 0.25f * static_cast<float>(officerRanks[4])));
+            playerGold += discGold;
+            statusBannerText = "Discovered Sky-Island: " + isl.name + " (+" + std::to_string(discGold) + " Gold)";
             statusBannerTimer = 5.0f;
         }
         float effIslRadius = (playerShip.position.y > isl.position.y + 7.5f)
@@ -279,9 +490,10 @@ void World::step(float dt) {
             npc.isDestroyed = true;
             if (npc.faction() == 1) {
                 piratesSunk++;
-                playerGold += 120;
+                int bountyG = static_cast<int>(120.0f * (1.0f + 0.25f * static_cast<float>(officerRanks[4])));
+                playerGold += bountyG;
                 crates.push_back({nextEntityId_++, npc.position + Vec3{0.0f, 40.0f, 0.0f}, {0.0f, 2.0f, 0.0f}, 95, 5, 60.0f, false});
-                statusBannerText = "Enemy Sky-Pirate Vessel Sunk! (+120 Gold)";
+                statusBannerText = "Enemy Sky-Pirate Vessel Sunk! (+" + std::to_string(bountyG) + " Gold)";
                 statusBannerTimer = 4.5f;
             }
         }
@@ -338,50 +550,76 @@ void World::step(float dt) {
 }
 
 void World::stepHarpoonTethers(float dt) {
+    float harpoonerReelMult  = 1.0f + 0.30f * static_cast<float>(officerRanks[2]);
+    float harpoonerBreakMult = 1.0f + 0.35f * static_cast<float>(officerRanks[2]);
+
     for (auto& t : tethers) {
         if (!t.active) {
             continue;
         }
-        // Locate target Leviathan
+
+        Vec3 shipAnchor = playerShip.localToWorldPos(t.sourceLocalOffset);
+        Vec3 targetAnchor = shipAnchor;
         Leviathan* targetLev = nullptr;
-        for (auto& lev : leviathans) {
-            if (lev.id() == t.targetLeviathanId && !lev.isSlain) {
-                targetLev = &lev;
-                break;
+        Airship* targetNpc = nullptr;
+
+        if (t.targetLeviathanId >= 0) {
+            for (auto& lev : leviathans) {
+                if (lev.id() == t.targetLeviathanId && !lev.isSlain && !lev.segments.empty()) {
+                    targetLev = &lev;
+                    int segIdx = std::clamp(t.targetSegmentIdx, 0, static_cast<int>(lev.segments.size()) - 1);
+                    targetAnchor = lev.segments[static_cast<size_t>(segIdx)].position;
+                    break;
+                }
             }
-        }
-        if (!targetLev || targetLev->segments.empty()) {
+            if (!targetLev) {
+                t.active = false;
+                continue;
+            }
+        } else if (t.targetShipId >= 0) {
+            for (auto& npc : npcShips) {
+                if (npc.id() == t.targetShipId && !npc.isDestroyed) {
+                    targetNpc = &npc;
+                    targetAnchor = npc.localToWorldPos(t.targetShipLocalOffset);
+                    break;
+                }
+            }
+            if (!targetNpc) {
+                t.active = false;
+                continue;
+            }
+        } else {
             t.active = false;
             continue;
         }
 
-        int segIdx = std::clamp(t.targetSegmentIdx, 0, static_cast<int>(targetLev->segments.size()) - 1);
-        Vec3 levAnchor = targetLev->segments[static_cast<size_t>(segIdx)].position;
-        Vec3 shipAnchor = playerShip.localToWorldPos(t.sourceLocalOffset);
-
-        Vec3 delta = levAnchor - shipAnchor;
+        Vec3 delta = targetAnchor - shipAnchor;
         t.currentLength = delta.length();
 
         if (t.isReelingIn) {
-            t.restLength = std::max(32.0f, t.restLength - 28.0f * dt);
+            t.restLength = std::max(28.0f, t.restLength - 30.0f * harpoonerReelMult * dt);
         }
 
+        float effectiveMaxBreak = t.maxBreakTension * harpoonerBreakMult;
         if (t.currentLength > t.restLength) {
             float stretch = t.currentLength - t.restLength;
             t.tensionForce = stretch * 16.0f;
 
-            if (t.tensionForce > t.maxBreakTension) {
-                // Cable snaps under extreme strain!
+            if (t.tensionForce > effectiveMaxBreak) {
                 t.active = false;
                 pendingAudioEvents.push_back({SimAudioEventType::CableSnap, shipAnchor, 1.0f});
-                statusBannerText = "WARNING: Harpoon Winch Cable Snapped Under Extreme Leviathan Strain!";
+                statusBannerText = "WARNING: Harpoon Winch Cable Snapped Under Extreme Strain!";
                 statusBannerTimer = 3.5f;
                 continue;
             }
 
-            Vec3 dirToLev = delta.normalized();
-            // Pull the player airship along behind the Leviathan (and slightly rotate bow toward it)
-            playerShip.velocity += dirToLev * ((t.tensionForce / std::max(60.0f, playerShip.totalMass)) * dt * 2.5f);
+            Vec3 dirToTarget = delta.normalized();
+            playerShip.velocity += dirToTarget * ((t.tensionForce / std::max(60.0f, playerShip.totalMass)) * dt * 2.4f);
+
+            // If tethered to an enemy Pirate Airship, pull the enemy ship toward the player as well!
+            if (targetNpc) {
+                targetNpc->velocity -= dirToTarget * ((t.tensionForce / std::max(45.0f, targetNpc->totalMass)) * dt * 3.8f);
+            }
         } else {
             t.tensionForce = 0.0f;
         }
@@ -394,6 +632,9 @@ void World::stepHarpoonTethers(float dt) {
 }
 
 void World::stepProjectiles(float dt) {
+    float sonarDmgBonus = (sonarMarkTimer > 0.0f) ? 1.25f : 1.0f;
+    float navRewardMult = 1.0f + 0.25f * static_cast<float>(officerRanks[4]);
+
     for (auto& p : projectiles) {
         if (!p.active) {
             continue;
@@ -426,7 +667,8 @@ void World::stepProjectiles(float dt) {
                     float prevArmor = lev.segments[static_cast<size_t>(clampedSeg)].armorHp;
                     bool wasWeakSpot = lev.segments[static_cast<size_t>(clampedSeg)].hasWeakSpotCore || (prevArmor <= 0.0f);
 
-                    lev.damageSegment(hitSeg, p.damage, p.isHarpoon);
+                    float effectiveDmg = p.damage * sonarDmgBonus;
+                    lev.damageSegment(hitSeg, effectiveDmg, p.isHarpoon || p.weaponType == BlockId::PlasmaLance);
                     float newArmor = lev.segments[static_cast<size_t>(clampedSeg)].armorHp;
 
                     if (p.ownerShipId == playerShip.id()) {
@@ -434,10 +676,10 @@ void World::stepProjectiles(float dt) {
                             callouts.push_back({hitPos + Vec3{0.0f, 6.0f, 0.0f}, "CARAPACE SHATTERED! CORE EXPOSED!", {85, 245, 255}, 2.0f, 2.0f});
                             cameraTrauma = std::min(1.0f, cameraTrauma + 0.35f);
                         } else if (wasWeakSpot) {
-                            int critDmg = static_cast<int>(p.damage * 2.4f);
+                            int critDmg = static_cast<int>(effectiveDmg * 2.4f);
                             callouts.push_back({hitPos + Vec3{0.0f, 5.0f, 0.0f}, "CRIT! -" + std::to_string(critDmg) + " [AETHER CORE]", {255, 95, 95}, 1.5f, 1.5f});
                         } else {
-                            callouts.push_back({hitPos + Vec3{0.0f, 4.0f, 0.0f}, "-" + std::to_string(static_cast<int>(p.damage)), {255, 215, 95}, 1.2f, 1.2f});
+                            callouts.push_back({hitPos + Vec3{0.0f, 4.0f, 0.0f}, "-" + std::to_string(static_cast<int>(effectiveDmg)), {255, 215, 95}, 1.2f, 1.2f});
                         }
                     }
 
@@ -466,12 +708,14 @@ void World::stepProjectiles(float dt) {
 
                     if (lev.isSlain) {
                         leviathansSlain++;
-                        playerGold += lev.goldBounty;
-                        playerAether += lev.aetherBounty;
+                        int goldReward = static_cast<int>(static_cast<float>(lev.goldBounty) * navRewardMult);
+                        int aethReward = static_cast<int>(static_cast<float>(lev.aetherBounty) * navRewardMult);
+                        playerGold += goldReward;
+                        playerAether += aethReward;
                         cameraTrauma = 1.0f;
-                        crates.push_back({nextEntityId_++, hitPos, {0.0f, 4.0f, 0.0f}, lev.goldBounty / 2, lev.aetherBounty / 2, 90.0f, false});
+                        crates.push_back({nextEntityId_++, hitPos, {0.0f, 4.0f, 0.0f}, goldReward / 2, aethReward / 2, 90.0f, false});
                         pendingAudioEvents.push_back({SimAudioEventType::LeviathanRoar, hitPos, 1.5f});
-                        statusBannerText = "COLOSSAL LEVIATHAN SLAIN: " + lev.name() + "! (+" + std::to_string(lev.goldBounty) + " Gold, +" + std::to_string(lev.aetherBounty) + " Aether)";
+                        statusBannerText = "COLOSSAL LEVIATHAN SLAIN: " + lev.name() + "! (+" + std::to_string(goldReward) + " Gold, +" + std::to_string(aethReward) + " Aether)";
                         statusBannerTimer = 7.0f;
 
                         for (auto& c : contracts) {
@@ -498,14 +742,35 @@ void World::stepProjectiles(float dt) {
                 Vec3 hitWorld{};
                 float hitDist = 0.0f;
                 if (npc.raycastBlocks(stepRay, stepLen + 3.0f, hitCoord, adjCoord, hitWorld, hitDist)) {
-                    int broken = npc.applyDamageAtWorldPos(hitWorld, p.damage, p.splashRadius, true, debris);
+                    float effDmg = p.damage * sonarDmgBonus;
+                    float prevShield = npc.shieldHp;
+                    int broken = npc.applyDamageAtWorldPos(hitWorld, effDmg, p.splashRadius, true, debris);
                     blocksDestroyedStat += broken;
+
+                    // Attach Harpoon Tether to Enemy Pirate Airship if harpoon hit!
+                    if (p.isHarpoon && p.ownerShipId == playerShip.id()) {
+                        HarpoonTether tether;
+                        tether.id = nextEntityId_++;
+                        tether.sourceShipId = playerShip.id();
+                        tether.sourceLocalOffset = p.launchAnchorLocal;
+                        tether.targetShipId = npc.id();
+                        tether.targetShipLocalOffset = npc.worldToLocalPos(hitWorld);
+                        tether.currentLength = (hitWorld - playerShip.localToWorldPos(p.launchAnchorLocal)).length();
+                        tether.restLength = std::max(32.0f, tether.currentLength * 0.92f);
+                        tethers.push_back(tether);
+                        callouts.push_back({hitWorld + Vec3{0.0f, 6.0f, 0.0f}, "GRAPPLING HARPOON LATCHED!", {85, 255, 165}, 1.8f, 1.8f});
+                        statusBannerText = "GRAPPLING HARPOON LATCHED onto " + npc.name() + "! Hold [R] to Reel & Tow!";
+                        statusBannerTimer = 4.0f;
+                    }
+
                     if (p.ownerShipId == playerShip.id()) {
-                        if (broken > 1) {
+                        if (prevShield > 0.0f && npc.shieldHp > 0.0f) {
+                            callouts.push_back({hitWorld + Vec3{0.0f, 4.0f, 0.0f}, "SHIELD HIT! -" + std::to_string(static_cast<int>(effDmg)), {85, 225, 255}, 1.1f, 1.1f});
+                        } else if (broken > 1) {
                             callouts.push_back({hitWorld + Vec3{0.0f, 5.0f, 0.0f}, "HULL FRACTURE! [" + std::to_string(broken) + " BLOCKS]", {255, 145, 55}, 1.7f, 1.7f});
                             cameraTrauma = std::min(1.0f, cameraTrauma + 0.28f);
                         } else {
-                            callouts.push_back({hitWorld + Vec3{0.0f, 3.5f, 0.0f}, "-" + std::to_string(static_cast<int>(p.damage)), {255, 205, 95}, 1.1f, 1.1f});
+                            callouts.push_back({hitWorld + Vec3{0.0f, 3.5f, 0.0f}, "-" + std::to_string(static_cast<int>(effDmg)), {255, 205, 95}, 1.1f, 1.1f});
                         }
                     }
                     explosions.push_back({hitWorld, p.splashRadius, p.color, false, false, p.prevPosition});
@@ -517,7 +782,8 @@ void World::stepProjectiles(float dt) {
 
                     if (npc.isDestroyed && npc.faction() == 1) {
                         piratesSunk++;
-                        playerGold += 120;
+                        int bountyG = static_cast<int>(120.0f * navRewardMult);
+                        playerGold += bountyG;
                         crates.push_back({nextEntityId_++, npc.position, {0.0f, 3.0f, 0.0f}, 95, 5, 60.0f, false});
                     }
                     p.active = false;
@@ -535,7 +801,7 @@ void World::stepProjectiles(float dt) {
                 float hitDist = 0.0f;
                 if (playerShip.raycastBlocks(stepRay, stepLen + 3.0f, hitCoord, adjCoord, hitWorld, hitDist)) {
                     int broken = playerShip.applyDamageAtWorldPos(hitWorld, p.damage * 0.55f, p.splashRadius, true, debris);
-                    cameraTrauma = std::min(1.0f, cameraTrauma + (broken > 0 ? 0.35f : 0.12f));
+                    cameraTrauma = std::min(1.0f, cameraTrauma + (broken > 0 ? 0.35f : 0.10f));
                     explosions.push_back({hitWorld, p.splashRadius, p.color, false, false, p.prevPosition});
                     pendingAudioEvents.push_back({
                         broken > 1 ? SimAudioEventType::StructuralFracture : SimAudioEventType::BlockImpact,
@@ -561,9 +827,12 @@ void World::stepProjectiles(float dt) {
                         explosions.push_back({cry.worldPos, 4.0f, {65, 235, 255}, false, false, p.prevPosition});
                         if (cry.hp <= 0.0f) {
                             cry.harvested = true;
-                            playerAether += cry.aetherYield;
-                            playerGold += cry.goldYield;
-                            statusBannerText = "Shattered Aetherium Crystal Vein! (+" + std::to_string(cry.aetherYield) + " Aether, +" + std::to_string(cry.goldYield) + " Gold)";
+                            int aethGain = static_cast<int>(std::ceil(static_cast<float>(cry.aetherYield) * navRewardMult));
+                            int goldGain = static_cast<int>(std::ceil(static_cast<float>(cry.goldYield) * navRewardMult));
+                            playerAether += aethGain;
+                            playerGold += goldGain;
+                            callouts.push_back({cry.worldPos + Vec3{0.0f, 5.0f, 0.0f}, "+" + std::to_string(aethGain) + " AETHERIUM!", {75, 245, 255}, 1.8f, 1.8f});
+                            statusBannerText = "Shattered Aetherium Crystal Vein! (+" + std::to_string(aethGain) + " Aether, +" + std::to_string(goldGain) + " Gold)";
                             statusBannerTimer = 4.0f;
                         }
                         p.active = false;
@@ -593,14 +862,15 @@ void World::stepDebrisAndCrates(float dt) {
         debris.end()
     );
 
+    float navRewardMult = 1.0f + 0.25f * static_cast<float>(officerRanks[4]);
     for (auto& c : crates) {
         if (c.collected) continue;
         c.lifetime -= dt;
-        // Tractor pull when player ship is within 65m
+        // Tractor pull when player ship is within 75m
         Vec3 toPlayer = playerShip.position - c.position;
         float dist = toPlayer.length();
-        if (dist < 65.0f && dist > 0.1f) {
-            c.velocity = (toPlayer / dist) * 48.0f;
+        if (dist < 75.0f && dist > 0.1f) {
+            c.velocity = (toPlayer / dist) * 52.0f;
         } else {
             c.velocity.y = std::sin(c.lifetime * 2.5f) * 1.5f;
         }
@@ -608,8 +878,11 @@ void World::stepDebrisAndCrates(float dt) {
 
         if (dist < playerShip.boundingRadius + 6.0f) {
             c.collected = true;
-            playerGold += c.goldAmount;
-            playerAether += c.aetherAmount;
+            int gGain = static_cast<int>(std::ceil(static_cast<float>(c.goldAmount) * navRewardMult));
+            int aGain = static_cast<int>(std::ceil(static_cast<float>(c.aetherAmount) * navRewardMult));
+            playerGold += gGain;
+            playerAether += aGain;
+            callouts.push_back({playerShip.position + Vec3{0.0f, 6.0f, 0.0f}, "SALVAGE! +" + std::to_string(gGain) + "G +" + std::to_string(aGain) + "Ae", {255, 225, 85}, 1.6f, 1.6f});
             pendingAudioEvents.push_back({SimAudioEventType::CratePickup, c.position, 1.0f});
         }
     }
