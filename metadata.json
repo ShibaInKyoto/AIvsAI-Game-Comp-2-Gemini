@@ -1,7 +1,5 @@
 {
-  "name": "ChronoStrider: Quantum Breach",
-  "description": "High-octane kinetic sci-fi extraction combat simulator with dynamic time-dilation, particle physics, and dual Web + Windows 10/11 native engine.",
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "Aethernaut: 3D Sky-Fleet Architect & Leviathan Hunter",
+  "description": "Native C++20 & OpenGL 3.3 (Raylib 5.5 + GLSL 330) 3D physics-driven airship engineering, naval broadside, and colossal Sky-Leviathan hunting game for Windows 10/11.",
+  "requestFramePermissions": []
 }

@@ -1,0 +1,470 @@
+#include "core/AppConfig.h"
+#include "core/Math3D.h"
+#include "sim/World.h"
+#include "sim/ShipBlueprints.h"
+#include "render/ShaderPipeline.h"
+#include "render/WorldRenderer.h"
+#include "audio/SynthAudio.h"
+#include "ui/DrydockEditor.h"
+#include "ui/HudRenderer.h"
+#include "raylib.h"
+#include <cmath>
+#include <cstdio>
+#include <algorithm>
+
+using namespace aethernaut;
+
+namespace {
+
+enum class ActiveScreen {
+    Title,
+    Flight,
+    Drydock
+};
+
+// Raycasts the 3D world from the mouse cursor to determine where the player's turrets should aim in 3D
+Vec3 computePlayer3DAimPoint(const World& world, const Camera3D& camera, Vector2 mousePos) {
+    Ray rlRay = GetScreenToWorldRay(mousePos, camera);
+    Ray3D ray{
+        {rlRay.position.x, rlRay.position.y, rlRay.position.z},
+        {rlRay.direction.x, rlRay.direction.y, rlRay.direction.z}
+    };
+
+    float bestDist = 380.0f;
+    Vec3 bestHit = ray.origin + ray.dir * 240.0f;
+
+    // 1. Check ray against Colossal Sky-Leviathans
+    for (const auto& lev : world.leviathans) {
+        if (lev.isSlain) continue;
+        int segIdx = -1;
+        Vec3 hitPos{};
+        float d = 0.0f;
+        if (lev.raycast(ray, bestDist, segIdx, hitPos, d)) {
+            bestDist = d;
+            bestHit = hitPos;
+        }
+    }
+
+    // 2. Check ray against Enemy Airships
+    for (const auto& npc : world.npcShips) {
+        if (npc.isDestroyed || npc.faction() == 0) continue;
+        Int3 hc{}, ac{};
+        Vec3 hp{};
+        float d = 0.0f;
+        if (npc.raycastBlocks(ray, bestDist, hc, ac, hp, d)) {
+            bestDist = d;
+            bestHit = hp;
+        }
+    }
+
+    return bestHit;
+}
+
+void setupLeviathanHuntScenario(World& world, float& camYaw, float& camPitch, float& camDist) {
+    world.initWorld(1337ULL, 1, false); // Pequod's Wrath Whaler Brig
+    world.playerShip.position = {0.0f, 138.0f, -155.0f};
+    world.playerShip.velocity = {0.0f, 0.0f, -14.0f};
+    world.playerShip.targetCruiseAltitude = 138.0f;
+    world.leviathans.clear();
+    world.spawnLeviathanEncounter(LeviathanSpecies::CrimsonStormWyrm, {-16.0f, 144.0f, -238.0f});
+    world.spawnLeviathanEncounter(LeviathanSpecies::AzureSkyWhale, {72.0f, 136.0f, -268.0f});
+    // Fire an initial harpoon & broadside toward the Crimson Storm-Wyrm!
+    if (!world.leviathans.empty() && !world.leviathans[0].segments.empty()) {
+        Vec3 targetPos = world.leviathans[0].segments[2].position;
+        world.firePlayerWeapons(true, true, targetPos);
+        // Also latch an active Harpoon Tether onto segment 2 for immediate tension physics
+        HarpoonTether tether;
+        tether.id = 9001;
+        tether.sourceShipId = world.playerShip.id();
+        tether.sourceLocalOffset = {0.0f, 2.0f, -10.0f};
+        tether.targetLeviathanId = world.leviathans[0].id();
+        tether.targetSegmentIdx = 2;
+        tether.currentLength = (targetPos - world.playerShip.position).length();
+        tether.restLength = tether.currentLength * 0.85f;
+        world.tethers.push_back(tether);
+        world.statusBannerText = "HARPOON LATCHED onto Draconis Fulmen! Hold [R] to Reel In, [LMB] Broadsides!";
+        world.statusBannerTimer = 6.0f;
+    }
+    camYaw = 0.28f;
+    camPitch = 0.22f;
+    camDist = 32.0f;
+}
+
+void setupFleetSkirmishScenario(World& world, float& camYaw, float& camPitch, float& camDist) {
+    world.initWorld(1337ULL, 2, false); // IJN Valkyrie Ironclad Frigate
+    world.playerShip.position = {0.0f, 138.0f, -155.0f};
+    world.playerShip.velocity = {0.0f, 0.0f, -14.0f};
+    world.playerShip.targetCruiseAltitude = 138.0f;
+    world.npcShips.clear();
+    world.spawnAlliedWingman(3, {32.0f, 140.0f, -178.0f});
+    world.spawnPirateSquadron(3, {-12.0f, 142.0f, -205.0f});
+    // Upgrade pirate squadron to armored Frigates & Dreadnoughts in broadside formation
+    if (world.npcShips.size() >= 4) {
+        ShipBlueprints::applyBlueprint(world.npcShips[1], 2);
+        world.npcShips[1].setName("Corsair Ironclad");
+        world.npcShips[1].position = {-34.0f, 142.0f, -192.0f};
+        world.npcShips[1].yaw = 0.15f;
+
+        ShipBlueprints::applyBlueprint(world.npcShips[2], 4);
+        world.npcShips[2].setName("Corsair Flagship");
+        world.npcShips[2].position = {-6.0f, 146.0f, -222.0f};
+        world.npcShips[2].yaw = 1.45f;
+
+        ShipBlueprints::applyBlueprint(world.npcShips[3], 1);
+        world.npcShips[3].setName("Corsair Raider");
+        world.npcShips[3].position = {26.0f, 143.0f, -208.0f};
+        world.npcShips[3].yaw = -0.35f;
+    }
+    world.firePlayerWeapons(true, false, {-32.0f, 142.0f, -192.0f});
+    world.statusBannerText = "SKY-ARMADA SKIRMISH: Allied Squadron Engaging Corsair Armada!";
+    world.statusBannerTimer = 6.0f;
+    camYaw = 0.28f;
+    camPitch = 0.20f;
+    camDist = 33.0f;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    AppConfig config = AppConfig::parseArgs(argc, argv);
+
+    unsigned int flags = FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT;
+    if (config.vsync) {
+        flags |= FLAG_VSYNC_HINT;
+    }
+    SetConfigFlags(flags);
+    InitWindow(config.windowWidth, config.windowHeight, "AETHERNAUT: 3D Sky-Fleet Architect & Leviathan Hunter");
+    SetExitKey(KEY_NULL);
+    SetTargetFPS(144);
+
+    ShaderPipeline shaderPipeline;
+    shaderPipeline.init(GetScreenWidth(), GetScreenHeight());
+
+    WorldRenderer worldRenderer;
+    worldRenderer.init(shaderPipeline);
+
+    SynthAudio synthAudio;
+    synthAudio.init(config.enableAudio);
+
+    World world;
+    int selectedBlueprint = config.initialBlueprintIndex;
+    world.initWorld(config.worldSeed, selectedBlueprint, false);
+
+    // 3D Orbit Camera State
+    Camera3D camera{};
+    camera.up = {0.0f, 1.0f, 0.0f};
+    camera.fovy = 52.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
+
+    float camYaw = 0.55f;
+    float camPitch = 0.25f;
+    float camDist = 32.0f;
+
+    ActiveScreen currentScreen = ActiveScreen::Title;
+    if (config.startScene == InitialScene::Flight) {
+        currentScreen = ActiveScreen::Flight;
+        camYaw = 0.18f;
+        camPitch = 0.24f;
+        camDist = 34.0f;
+    } else if (config.startScene == InitialScene::Drydock) {
+        currentScreen = ActiveScreen::Drydock;
+        world.isSandboxMode = true;
+        world.playerGold = 99999;
+        world.playerAether = 999;
+        camYaw = 0.62f;
+        camPitch = 0.34f;
+        camDist = 29.0f;
+    } else if (config.startScene == InitialScene::LeviathanHunt) {
+        currentScreen = ActiveScreen::Flight;
+        setupLeviathanHuntScenario(world, camYaw, camPitch, camDist);
+    } else if (config.startScene == InitialScene::FleetSkirmish) {
+        currentScreen = ActiveScreen::Flight;
+        setupFleetSkirmishScenario(world, camYaw, camPitch, camDist);
+    }
+
+    if (config.autotestSeconds > 0.0f) {
+        world.playerAutopilot = true;
+    }
+
+    DrydockEditor drydockEditor;
+    HudRenderer hudRenderer;
+    bool showWorldMap = false;
+    bool showCodex = false;
+
+    float totalElapsed = 0.0f;
+    float physicsAccumulator = 0.0f;
+    constexpr float kFixedStep = 1.0f / 120.0f;
+    bool screenshotCaptured = false;
+
+    while (!WindowShouldClose()) {
+        float frameDt = std::min(0.05f, GetFrameTime());
+        totalElapsed += frameDt;
+
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+        shaderPipeline.checkResize(screenW, screenH);
+
+        if (IsKeyPressed(KEY_F3)) {
+            config.showPerfOverlay = !config.showPerfOverlay;
+        }
+
+        // Camera Orbit Controls (Right-Mouse Drag in Drydock, or Mouse Wheel Zoom, or Q/E Orbit)
+        float wheel = GetMouseWheelMove();
+        if (std::abs(wheel) > 0.01f) {
+            camDist = std::clamp(camDist - wheel * 4.5f, 16.0f, 145.0f);
+        }
+        if (IsKeyDown(KEY_Q)) camYaw -= 1.4f * frameDt;
+        if (IsKeyDown(KEY_E)) camYaw += 1.4f * frameDt;
+
+        if (currentScreen == ActiveScreen::Drydock && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+            Vector2 delta = GetMouseDelta();
+            camYaw -= delta.x * 0.007f;
+            camPitch = std::clamp(camPitch + delta.y * 0.007f, -0.25f, 1.25f);
+        }
+
+        // Check nearest Drydock Port distance
+        float portDist = 1e30f;
+        const SkyIsland* nearestPort = world.archipelago.findNearestPort(world.playerShip.position, portDist);
+        bool canDockAtPort = (nearestPort != nullptr && portDist < nearestPort->radius + 95.0f);
+        std::string nearestPortName = nearestPort ? nearestPort->name : "Drydock";
+
+        if (currentScreen == ActiveScreen::Title) {
+            // Live AI attract battle in background on title screen while orbiting the flagship
+            world.playerAutopilot = true;
+            physicsAccumulator += frameDt;
+            while (physicsAccumulator >= kFixedStep) {
+                world.step(kFixedStep);
+                physicsAccumulator -= kFixedStep;
+            }
+            camYaw += 0.32f * frameDt;
+            camPitch = 0.25f;
+            camDist = 29.0f;
+        } else if (currentScreen == ActiveScreen::Flight) {
+            if (IsKeyPressed(KEY_P)) {
+                world.playerAutopilot = !world.playerAutopilot;
+            }
+            if (IsKeyPressed(KEY_TAB)) {
+                world.isPlayerWalkingOnDeck = !world.isPlayerWalkingOnDeck;
+            }
+            if (IsKeyPressed(KEY_M)) {
+                showWorldMap = !showWorldMap;
+                if (showWorldMap) showCodex = false;
+            }
+            if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_F1)) {
+                showCodex = !showCodex;
+                if (showCodex) showWorldMap = false;
+            }
+            if (IsKeyPressed(KEY_U)) {
+                world.hireAlliedWingman();
+            }
+            if (IsKeyPressed(KEY_B) && (canDockAtPort || world.isSandboxMode)) {
+                currentScreen = ActiveScreen::Drydock;
+                camYaw = 0.62f;
+                camPitch = 0.34f;
+                camDist = 29.0f;
+            }
+
+            // Player Manual Flight / Deck Controls
+            if (!world.playerAutopilot) {
+                if (world.isPlayerWalkingOnDeck) {
+                    float fwd = 0.0f, right = 0.0f;
+                    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) fwd += 1.0f;
+                    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) fwd -= 1.0f;
+                    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) right += 1.0f;
+                    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) right -= 1.0f;
+                    world.updateCaptainDeckWalk(frameDt, fwd, right);
+                } else {
+                    float throttle = 0.0f;
+                    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) throttle += 1.0f;
+                    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) throttle -= 0.7f;
+                    world.playerShip.throttleInput = throttle;
+
+                    float rudder = 0.0f;
+                    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) rudder += 1.0f;
+                    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) rudder -= 1.0f;
+                    world.playerShip.rudderInput = rudder;
+
+                    float alt = 0.0f;
+                    if (IsKeyDown(KEY_SPACE)) alt += 1.0f;
+                    if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_C)) alt -= 1.0f;
+                    world.playerShip.altitudeInput = alt;
+                }
+
+                // Weapon Firing & Harpoon Winch Reeling
+                Vec3 aimWorld = computePlayer3DAimPoint(world, camera, GetMousePosition());
+                world.playerAimWorldPos = aimWorld;
+                bool fireCannons = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+                bool fireHarpoons = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+                if (fireCannons || fireHarpoons) {
+                    world.firePlayerWeapons(fireCannons, fireHarpoons, aimWorld);
+                }
+                world.setReelHarpoons(IsKeyDown(KEY_R));
+                if (IsKeyPressed(KEY_F)) {
+                    world.releaseAllPlayerHarpoons();
+                }
+            }
+
+            // Fixed-timestep 120Hz 3D Physics Step
+            physicsAccumulator += frameDt;
+            while (physicsAccumulator >= kFixedStep) {
+                world.step(kFixedStep);
+                physicsAccumulator -= kFixedStep;
+            }
+        } else if (currentScreen == ActiveScreen::Drydock) {
+            bool exitDrydock = false;
+            drydockEditor.update(world, camera, screenW, screenH, exitDrydock);
+            if (exitDrydock) {
+                currentScreen = ActiveScreen::Flight;
+                camYaw = 0.18f;
+                camPitch = 0.24f;
+                camDist = 34.0f;
+            }
+        }
+
+        // Update 3D Camera Position around Player Flagship
+        Vec3 shipPos = world.playerShip.position;
+        if (world.isPlayerWalkingOnDeck && currentScreen == ActiveScreen::Flight) {
+            Vec3 capWorld = world.playerShip.localToWorldPos(world.playerShip.captainLocalPos + Vec3{0.0f, 3.2f, 6.5f});
+            Vec3 capLook = world.playerShip.localToWorldPos(world.playerShip.captainLocalPos + Vec3{0.0f, 1.5f, -12.0f});
+            camera.position = {capWorld.x, capWorld.y, capWorld.z};
+            camera.target = {capLook.x, capLook.y, capLook.z};
+        } else {
+            float effectiveYaw = (currentScreen == ActiveScreen::Drydock || currentScreen == ActiveScreen::Title)
+                ? camYaw
+                : (world.playerShip.yaw + camYaw);
+            Vec3 offset{
+                std::sin(effectiveYaw) * std::cos(camPitch) * camDist,
+                std::sin(camPitch) * camDist + 4.5f,
+                std::cos(effectiveYaw) * std::cos(camPitch) * camDist
+            };
+            // On Title Screen, shift camera target slightly left so the 3D flagship sits in the right half of the viewport
+            Vec3 targetShift{0.0f, 2.2f, 0.0f};
+            if (currentScreen == ActiveScreen::Title) {
+                Vec3 camRight{std::cos(effectiveYaw), 0.0f, -std::sin(effectiveYaw)};
+                targetShift -= camRight * 7.5f;
+            }
+            // Subtle physical 3D camera recoil / impact shake from world.cameraTrauma
+            float shakeMag = world.cameraTrauma * world.cameraTrauma * 1.35f;
+            Vec3 shakeOffset{
+                std::sin(totalElapsed * 47.0f) * shakeMag,
+                std::cos(totalElapsed * 53.0f) * shakeMag * 0.7f,
+                std::sin(totalElapsed * 39.0f) * shakeMag
+            };
+            camera.position = {shipPos.x + offset.x + shakeOffset.x, shipPos.y + offset.y + shakeOffset.y, shipPos.z + offset.z + shakeOffset.z};
+            camera.target = {shipPos.x + targetShift.x + shakeOffset.x * 0.4f, shipPos.y + targetShift.y + shakeOffset.y * 0.4f, shipPos.z + targetShift.z};
+        }
+
+        // Update Visual Particles & Procedural Audio
+        worldRenderer.updateEffects(world, frameDt);
+        synthAudio.processWorldEvents(world, shipPos, config.sfxVolume, config.musicVolume);
+
+        // Compute storm lightning flash intensity
+        float stormFlash = 0.0f;
+        for (const auto& st : world.archipelago.storms) {
+            stormFlash = std::max(stormFlash, st.lightningFlashAlpha);
+        }
+
+        // ---------------------------------------------------------------------
+        // Render 3D Scene into HDR Offscreen Buffer + Post-Process Bloom
+        // ---------------------------------------------------------------------
+        shaderPipeline.beginScenePass();
+        worldRenderer.renderWorld3D(
+            world,
+            camera,
+            shaderPipeline,
+            (currentScreen == ActiveScreen::Drydock) ? &drydockEditor.ghostPreview : nullptr
+        );
+
+        BeginDrawing();
+        shaderPipeline.endSceneAndDrawPostProcess(screenW, screenH, config.enableBloom, stormFlash);
+
+        // ---------------------------------------------------------------------
+        // Render 2D Vector HUD / Drydock Shipyard UI / Title Menu
+        // ---------------------------------------------------------------------
+        if (currentScreen == ActiveScreen::Title) {
+            TitleAction act = hudRenderer.drawTitleScreen(world, screenW, screenH, selectedBlueprint);
+            if (act == TitleAction::StartCampaign) {
+                world.initWorld(config.worldSeed, selectedBlueprint, false);
+                world.playerAutopilot = false;
+                camYaw = 0.18f;
+                camPitch = 0.24f;
+                camDist = 34.0f;
+                currentScreen = ActiveScreen::Flight;
+            } else if (act == TitleAction::StartDrydockSandbox) {
+                world.initWorld(config.worldSeed, selectedBlueprint, true);
+                world.playerAutopilot = false;
+                camYaw = 0.62f;
+                camPitch = 0.34f;
+                camDist = 29.0f;
+                currentScreen = ActiveScreen::Drydock;
+            } else if (act == TitleAction::StartLeviathanHunt) {
+                world.playerAutopilot = false;
+                setupLeviathanHuntScenario(world, camYaw, camPitch, camDist);
+                currentScreen = ActiveScreen::Flight;
+            } else if (act == TitleAction::StartFleetSkirmish) {
+                world.playerAutopilot = false;
+                setupFleetSkirmishScenario(world, camYaw, camPitch, camDist);
+                currentScreen = ActiveScreen::Flight;
+            }
+        } else if (currentScreen == ActiveScreen::Flight) {
+            bool requestOpenDrydock = false;
+            hudRenderer.drawFlightHUD(
+                world, camera, screenW, screenH,
+                canDockAtPort, nearestPortName, requestOpenDrydock
+            );
+            if (requestOpenDrydock) {
+                currentScreen = ActiveScreen::Drydock;
+                camYaw = 0.62f;
+                camPitch = 0.34f;
+                camDist = 29.0f;
+            }
+            if (showWorldMap) {
+                hudRenderer.drawWorldMapModal(world, screenW, screenH, showWorldMap);
+            }
+            if (showCodex) {
+                hudRenderer.drawCodexModal(screenW, screenH, showCodex);
+            }
+        } else if (currentScreen == ActiveScreen::Drydock) {
+            bool exitDrydock = false;
+            drydockEditor.drawUI(world, screenW, screenH, exitDrydock);
+            if (exitDrydock) {
+                currentScreen = ActiveScreen::Flight;
+                camYaw = 0.18f;
+                camPitch = 0.24f;
+                camDist = 34.0f;
+            }
+        }
+
+        if (config.showPerfOverlay) {
+            DrawRectangle(14, 14, 210, 54, Color{8, 14, 24, 215});
+            DrawFPS(24, 20);
+            char pbuf[64];
+            std::snprintf(pbuf, sizeof(pbuf), "Blocks: %d | Proj: %zu",
+                          world.playerShip.occupiedBlockCount, world.projectiles.size());
+            DrawText(pbuf, 24, 42, 13, Color{145, 225, 255, 255});
+        }
+
+        EndDrawing();
+
+        // Automated Screenshot Capture Flag (supports nested paths like docs/screenshots/*.png)
+        if (!config.screenshotPath.empty() && !screenshotCaptured && totalElapsed >= config.screenshotAtSeconds) {
+            Image shot = LoadImageFromScreen();
+            ExportImage(shot, config.screenshotPath.c_str());
+            UnloadImage(shot);
+            screenshotCaptured = true;
+            if (config.autotestSeconds <= 0.0f) {
+                break;
+            }
+        }
+
+        if (config.autotestSeconds > 0.0f && totalElapsed >= config.autotestSeconds) {
+            break;
+        }
+    }
+
+    synthAudio.shutdown();
+    worldRenderer.shutdown();
+    shaderPipeline.shutdown();
+    CloseWindow();
+    return 0;
+}

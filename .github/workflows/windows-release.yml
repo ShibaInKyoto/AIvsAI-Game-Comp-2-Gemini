@@ -1,35 +1,82 @@
-name: Windows 10/11 Native Release
+name: Build & Release Aethernaut (Windows 10/11 x64 & Linux)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, "**" ]
+    tags: [ "v*" ]
+  pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-windows:
+  windows-msvc-x64:
+    name: Windows 10/11 (MSVC x64 Static Release)
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSVC developer command prompt
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Configure CMake
+      - name: Configure CMake (MSVC x64)
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build Standalone Executable
-        run: cmake --build build --config Release
+      - name: Build Aethernaut.exe & Tests
+        run: cmake --build build --config Release --parallel
 
-      - name: Archive Windows Release
+      - name: Run Physics & Simulation Unit Tests
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: Package Standalone Windows 10/11 Release
+        shell: pwsh
         run: |
-          mkdir release
-          copy build\bin\Release\ChronoStrider.exe release\
-          copy README.md release\
-          Compress-Archive -Path release\* -DestinationPath ChronoStrider-Windows-x64.zip
+          New-Item -ItemType Directory -Force -Path release/Aethernaut
+          if (Test-Path build/bin/Release/Aethernaut.exe) {
+            Copy-Item build/bin/Release/Aethernaut.exe release/Aethernaut/
+          } else {
+            Copy-Item build/bin/Aethernaut.exe release/Aethernaut/
+          }
+          Copy-Item -Recurse assets release/Aethernaut/assets
+          Copy-Item README.md release/Aethernaut/
+          Copy-Item LICENSE release/Aethernaut/
+          Compress-Archive -Path release/Aethernaut/* -DestinationPath Aethernaut-Windows-x64.zip -Force
 
-      - name: Upload Release Artifact
+      - name: Upload Windows 10/11 x64 Release Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChronoStrider-Windows-x64
-          path: ChronoStrider-Windows-x64.zip
+          name: Aethernaut-Windows-x64
+          path: Aethernaut-Windows-x64.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Aethernaut — Windows 10/11 x64 Standalone Release"
+          files: Aethernaut-Windows-x64.zip
+          generate_release_notes: true
+
+  linux-gcc-x64:
+    name: Linux (GCC x64 + Unit Tests + Headless Benchmark)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install OpenGL & X11 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxi-dev libgl1-mesa-dev libasound2-dev xvfb
+
+      - name: Configure & Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Run Unit & Simulation Tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run Headless 120Hz Physics Benchmark
+        run: ./build/bin/aethernaut_benchmark 60

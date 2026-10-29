@@ -1,0 +1,13 @@
+build/
+build-win/
+build-linux/
+dist/
+release/
+*.exe
+*.zip
+*.o
+*.obj
+*.a
+*.lib
+.DS_Store
+compile_commands.json

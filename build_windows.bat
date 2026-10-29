@@ -1,35 +1,28 @@
 @echo off
-echo =======================================================
-echo   ChronoStrider: Quantum Breach - Windows 10/11 Native Build
-echo =======================================================
-echo Checking Visual Studio 2022 / C++ Build Tools...
+setlocal enabledelayedexpansion
 
-where cmake >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [ERROR] CMake not found. Please install CMake 3.22+ from https://cmake.org/download/
-    pause
-    exit /b 1
-)
+echo ============================================================================
+echo   AETHERNAUT: 3D Sky-Fleet Architect ^& Colossal Leviathan Hunter
+echo   Windows 10/11 x64 Native C++20 + OpenGL 3.3 Release Build Script
+echo ============================================================================
 
-echo Configuring CMake for Windows x64 (MSVC Statically Linked)...
 cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
-if %errorlevel% neq 0 (
-    echo [ERROR] CMake configuration failed.
-    pause
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] CMake configuration failed. Ensure CMake and Visual Studio C++ tools are installed.
     exit /b 1
 )
 
-echo Building ChronoStrider.exe in Release mode...
-cmake --build build --config Release
-if %errorlevel% neq 0 (
+cmake --build build --config Release --parallel
+if %ERRORLEVEL% neq 0 (
     echo [ERROR] Build failed.
-    pause
     exit /b 1
 )
 
-echo =======================================================
-echo   BUILD SUCCESSFUL!
-echo   Executable location: build\bin\Release\ChronoStrider.exe
-echo =======================================================
-build\bin\Release\ChronoStrider.exe
-pause
+echo.
+echo [SUCCESS] Built standalone Windows executable: build\bin\Release\Aethernaut.exe
+echo Running unit test suite...
+ctest --test-dir build -C Release --output-on-failure
+
+echo.
+echo Launching Aethernaut...
+start "" "build\bin\Release\Aethernaut.exe"
