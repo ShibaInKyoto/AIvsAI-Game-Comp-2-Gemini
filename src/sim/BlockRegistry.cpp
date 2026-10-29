@@ -150,6 +150,20 @@ const std::array<BlockSpec, static_cast<size_t>(BlockId::Count)> kSpecs = {{
         "High-caliber incendiary howitzer that ignites multi-block deck fires and melts carapace armor.",
         24.0f, 215.0f, 8.0f, 0.0f, 0.0f, 0.0f, 0.0f, 8.0f, 115.0f, 1.65f, 165.0f, 85, 3,
         {235, 95, 45}, {255, 195, 55}, true, 0.0f
+    },
+    // 21: TractorBeam
+    {
+        BlockId::TractorBeam, "Aether Tractor Grappler", "Utility",
+        "Projects a magnetic Aether beam that pulls Salvage Crates & Star-Aether Meteoroids from +85m per emitter.",
+        18.0f, 210.0f, 7.0f, 25.0f, 0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 1.0f, 0.0f, 80, 3,
+        {65, 245, 195}, {215, 185, 75}, true, 0.0f
+    },
+    // 22: RailgunBattery
+    {
+        BlockId::RailgunBattery, "Hyper-Velocity Railgun", "Artillery",
+        "Electromagnetic twin-rail cannon firing 320 m/s armor-piercing tungsten kinetic slugs.",
+        27.0f, 245.0f, 9.0f, 0.0f, 0.0f, 0.0f, 0.0f, 22.0f, 195.0f, 2.15f, 320.0f, 130, 6,
+        {95, 235, 255}, {72, 84, 102}, true, 0.0f
     }
 }};
 

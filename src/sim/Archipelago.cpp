@@ -40,6 +40,9 @@ void Archipelago::generate(uint64_t seed) {
     rng_.seedState(seed, 0x9E3779B97F4A7C15ULL);
     islands.clear();
     storms.clear();
+    slipstreams.clear();
+    updrafts.clear();
+    obelisks.clear();
 
     struct IslandPreset {
         const char* name;
@@ -206,6 +209,82 @@ void Archipelago::generate(uint64_t seed) {
     s2.velocity = {5.0f, 0.0f, -5.0f};
     s2.radius = 260.0f;
     storms.push_back(s2);
+
+    // Generate 12 Aether-Slipstream Rings forming high-speed skyways across the Archipelago
+    struct RingDef {
+        Vec3 pos;
+        Vec3 fwd;
+    };
+    const RingDef kRingDefs[12] = {
+        {{0.0f, 136.0f, -195.0f},   {0.0f, 0.0f, -1.0f}},
+        {{42.0f, 138.0f, -265.0f},  {0.55f, 0.0f, -0.83f}},
+        {{135.0f, 139.0f, -260.0f}, {0.92f, 0.0f, -0.38f}},
+        {{245.0f, 137.0f, -250.0f}, {0.98f, 0.0f, -0.18f}},
+        {{-95.0f, 142.0f, -245.0f}, {-0.75f, 0.0f, -0.66f}},
+        {{-215.0f, 145.0f, -315.0f}, {-0.78f, 0.0f, -0.62f}},
+        {{75.0f, 152.0f, -435.0f},  {0.28f, 0.0f, -0.96f}},
+        {{125.0f, 160.0f, -560.0f}, {0.22f, 0.0f, -0.97f}},
+        {{65.0f, 155.0f, -845.0f},  {-0.25f, 0.0f, -0.96f}},
+        {{-245.0f, 126.0f, 85.0f},  {-0.82f, 0.0f, 0.57f}},
+        {{235.0f, 118.0f, 125.0f},  {0.78f, 0.0f, 0.62f}},
+        {{0.0f, 146.0f, -990.0f},   {0.0f, 0.0f, -1.0f}}
+    };
+    for (int r = 0; r < 12; ++r) {
+        SlipstreamRing ring;
+        ring.id = r + 1;
+        ring.position = kRingDefs[r].pos;
+        ring.forward = kRingDefs[r].fwd.normalized();
+        ring.radius = 21.0f;
+        ring.cooldownTimer = 0.0f;
+        ring.spinPhase = static_cast<float>(r) * 0.52f;
+        slipstreams.push_back(ring);
+    }
+
+    // Generate 8 Thermal Aether-Geyser Updraft Columns rising from the lower cloud sea
+    const Vec3 kGeyserBases[8] = {
+        {85.0f, 45.0f, -210.0f},
+        {-155.0f, 45.0f, -290.0f},
+        {245.0f, 45.0f, -345.0f},
+        {-295.0f, 45.0f, -155.0f},
+        {385.0f, 45.0f, 115.0f},
+        {-340.0f, 45.0f, 260.0f},
+        {95.0f, 45.0f, -640.0f},
+        {-65.0f, 45.0f, -920.0f}
+    };
+    for (int g = 0; g < 8; ++g) {
+        UpdraftGeyser geyser;
+        geyser.id = g + 1;
+        geyser.basePosition = kGeyserBases[g];
+        geyser.radius = 28.0f;
+        geyser.topY = 198.0f;
+        geyser.updraftSpeed = 24.0f;
+        geyser.phase = static_cast<float>(g) * 0.78f;
+        updrafts.push_back(geyser);
+    }
+
+    // Generate 6 Ancient Aether-Obelisk Monoliths across the Sky-Archipelago
+    struct ObeliskPreset {
+        const char* name;
+        Vec3 pos;
+    };
+    const ObeliskPreset kObeliskPresets[6] = {
+        {"Obelisk of Dawn-Gale",    {105.0f, 140.0f, -185.0f}},
+        {"Obelisk of the Storm-Eye", {-185.0f, 146.0f, -265.0f}},
+        {"Obelisk of Prism-Tide",   {285.0f, 142.0f, -155.0f}},
+        {"Obelisk of Sun-Forge",    {-325.0f, 134.0f, 145.0f}},
+        {"Obelisk of Iron-Anvil",   {425.0f, 128.0f, 245.0f}},
+        {"Obelisk of the Void-Crown", {45.0f, 158.0f, -820.0f}}
+    };
+    for (int b = 0; b < 6; ++b) {
+        AetherObelisk ob;
+        ob.id = b + 1;
+        ob.name = kObeliskPresets[b].name;
+        ob.position = kObeliskPresets[b].pos;
+        ob.attuneRadius = 68.0f;
+        ob.spinPhase = static_cast<float>(b) * 1.047f;
+        ob.attuned = false;
+        obelisks.push_back(ob);
+    }
 }
 
 void Archipelago::update(float dt) {
@@ -213,6 +292,21 @@ void Archipelago::update(float dt) {
     timeOfDay += dt * 0.0025f;
     if (timeOfDay > 1.0f) {
         timeOfDay -= 1.0f;
+    }
+
+    for (auto& ring : slipstreams) {
+        ring.spinPhase += dt * 1.85f;
+        if (ring.cooldownTimer > 0.0f) {
+            ring.cooldownTimer = std::max(0.0f, ring.cooldownTimer - dt);
+        }
+    }
+
+    for (auto& gey : updrafts) {
+        gey.phase += dt * 2.4f;
+    }
+
+    for (auto& ob : obelisks) {
+        ob.spinPhase += dt * (ob.attuned ? 3.2f : 1.4f);
     }
 
     for (auto& storm : storms) {

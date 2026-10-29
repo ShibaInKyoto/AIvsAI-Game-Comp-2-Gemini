@@ -69,6 +69,38 @@ struct RelicSpec {
     int aetherCost;
 };
 
+constexpr int kMedalCount = 10;
+
+struct MedalSpec {
+    const char* title;
+    const char* conditionDesc;
+    int rewardGold;
+    int rewardAether;
+};
+
+struct AetherMeteor3D {
+    int id = 0;
+    Vec3 position{0.0f, 220.0f, 0.0f};
+    Vec3 velocity{0.0f, -6.5f, 0.0f};
+    float radius = 5.2f;
+    float hp = 110.0f;
+    float maxHp = 110.0f;
+    int aetherYield = 14;
+    int goldYield = 160;
+    float spinAngle = 0.0f;
+    bool active = true;
+};
+
+struct SkySurvivorPod {
+    int id = 0;
+    Vec3 position{0.0f, 138.0f, 0.0f};
+    Vec3 velocity{0.0f, -0.6f, 0.0f};
+    int goldReward = 140;
+    int aetherReward = 5;
+    float flarePhase = 0.0f;
+    bool rescued = false;
+};
+
 enum class FleetOrder {
     EscortFormation = 0,
     FocusMyTarget = 1,
@@ -93,6 +125,14 @@ public:
     void spawnAlliedWingman(int blueprintIdx, const Vec3& pos);
     bool hireAlliedWingman();
     void summonApexLeviathan();
+    void spawnStarMeteor(const Vec3& pos, const Vec3& vel);
+    void spawnSurvivorPod(const Vec3& pos);
+    bool fastTravelToIsland(int islandIdx);
+    void spawnImperialConvoy();
+    bool overclockPlayerShip();
+    void spawnCorsairDreadArk();
+    bool refitPlayerAirframe();
+    bool autoStabilizePlayerShip();
 
     // Officer Crew Roster & Upgrades (0..4)
     static const std::array<OfficerSpec, 5>& getOfficerSpecs();
@@ -103,6 +143,11 @@ public:
     static const std::array<RelicSpec, kRelicCount>& getRelicSpecs();
     bool unlockRelic(int relicIdx);
     int unlockedRelicCount() const;
+
+    // Sky-Admiral Commendation Medals (0..9)
+    static const std::array<MedalSpec, kMedalCount>& getMedalSpecs();
+    int earnedMedalCount() const;
+    void checkCommendationMedals();
 
     // Fleet Admiral Squadron Orders, Weather & Hull Livery Control
     void cycleFleetOrder();
@@ -120,6 +165,8 @@ public:
     // Active Tactical Ship Abilities
     bool triggerDamageControl();
     bool triggerSonarPing();
+    bool deploySkyMine();
+    bool triggerEmpNova();
 
     // Campaign Save / Load
     bool saveCampaign(const std::string& filepath);
@@ -142,6 +189,9 @@ public:
     Archipelago archipelago;
 
     std::vector<Projectile3D> projectiles;
+    std::vector<SkyMine3D> skyMines;
+    std::vector<AetherMeteor3D> meteors;
+    std::vector<SkySurvivorPod> survivorPods;
     std::vector<HarpoonTether> tethers;
     std::vector<DetachedDebris> debris;
     std::vector<SalvageCrate> crates;
@@ -158,19 +208,44 @@ public:
     int citadelsLiberatedStat = 0;
     int blocksDestroyedStat = 0;
     int tradeProfitStat = 0;
+    int slipstreamRingsPassedStat = 0;
+    int slipstreamComboCount = 0;
+    float slipstreamComboTimer = 0.0f;
+    int ramImpactsStat = 0;
+    int skyMineHitsStat = 0;
+    int meteorsHarvestedStat = 0;
+    int convoysEscortedStat = 0;
+    int convoyShipId = -1;
+    int convoyTargetIslandIdx = 1;
+    float convoyRespawnTimer = 0.0f;
+    int hullOverclockTier = 0;
+    int dreadnoughtsSunkStat = 0;
+    int dreadArkShipId = -1;
+    int survivorsRescuedStat = 0;
+    int empNovasTriggeredStat = 0;
+    int projectilesInterceptedStat = 0;
+    int obelisksAttunedStat = 0;
     int prestigeHuntTier = 1;
     std::array<int, 5> officerRanks{{0, 0, 0, 0, 0}}; // 0..3 per officer
     std::array<int, kCommodityCount> playerCargo{{0, 0, 0, 0}};
     std::array<bool, kRelicCount> unlockedRelics{{false, false, false, false, false}};
+    std::array<bool, kMedalCount> earnedMedals{{false, false, false, false, false, false, false, false, false, false}};
     FleetOrder currentFleetOrder = FleetOrder::EscortFormation;
     WeatherState currentWeather = WeatherState::ClearTradeWinds;
 
     // Tactical Ability Cooldowns & States
     float damageControlCooldown = 0.0f;
     float sonarPingCooldown = 0.0f;
+    float skyMineCooldown = 0.0f;
+    float empNovaCooldown = 0.0f;
+    float pointDefenseCooldown = 0.0f;
+    float ramCooldownTimer = 0.0f;
+    float meteorSpawnTimer = 28.0f;
     float sonarMarkTimer = 0.0f;
     float sonarWaveRadius = 0.0f;
     Vec3 sonarWaveOrigin{0.0f, 0.0f, 0.0f};
+    float empWaveRadius = 0.0f;
+    Vec3 empWaveOrigin{0.0f, 0.0f, 0.0f};
     float weatherTimer = 0.0f;
     int skyAtmospherePreset = 0; // 0: Golden Dawn, 1: High Noon, 2: Crimson Dusk, 3: Starlit Night
 
@@ -184,6 +259,11 @@ public:
 
 private:
     void stepProjectiles(float dt);
+    void stepPointDefense(float dt);
+    void stepSkyMines(float dt);
+    void stepMeteors(float dt);
+    void stepSurvivorPods(float dt);
+    void stepKineticCollisions(float dt);
     void stepHarpoonTethers(float dt);
     void stepDebrisAndCrates(float dt);
 

@@ -29,7 +29,9 @@ enum class BlockId : uint8_t {
     ShockHarpoon = 18,
     CapacitorBank = 19,
     FlameMortar = 20,
-    Count = 21
+    TractorBeam = 21,
+    RailgunBattery = 22,
+    Count = 23
 };
 
 struct ColorRGB {

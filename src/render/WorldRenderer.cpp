@@ -135,6 +135,126 @@ void WorldRenderer::renderWorld3D(
         }
     }
 
+    // 2B. Render 3D Aether-Slipstream Skyway Rings
+    for (const auto& ring : world.archipelago.slipstreams) {
+        if ((ring.position - camPos).length() > 1450.0f) continue;
+        bool ready = (ring.cooldownTimer <= 0.0f);
+        Vec3 upVec{0.0f, 1.0f, 0.0f};
+        Vec3 rightVec = Vec3::cross(ring.forward, upVec).normalized();
+        if (rightVec.lengthSq() < 0.01f) rightVec = {1.0f, 0.0f, 0.0f};
+        Vec3 orthoUp = Vec3::cross(rightVec, ring.forward).normalized();
+
+        const int ringSegs = 12;
+        Color frameCol = ready ? Color{235, 188, 72, 255} : Color{95, 110, 128, 255};
+        Color glowCol  = ready ? Color{75, 240, 255, 235} : Color{75, 115, 145, 160};
+
+        pipeline.setEmissiveStrength(ready ? 0.35f : 0.0f);
+        for (int s = 0; s < ringSegs; ++s) {
+            float a0 = (static_cast<float>(s) / static_cast<float>(ringSegs)) * kTwoPi + ring.spinPhase * 0.25f;
+            float a1 = (static_cast<float>(s + 1) / static_cast<float>(ringSegs)) * kTwoPi + ring.spinPhase * 0.25f;
+            Vec3 p0 = ring.position + (rightVec * std::cos(a0) + orthoUp * std::sin(a0)) * ring.radius;
+            Vec3 p1 = ring.position + (rightVec * std::cos(a1) + orthoUp * std::sin(a1)) * ring.radius;
+            DrawCylinderEx({p0.x, p0.y, p0.z}, {p1.x, p1.y, p1.z}, 0.95f, 0.95f, 6, frameCol);
+        }
+
+        if (ready) {
+            pipeline.setEmissiveStrength(1.55f);
+            for (int s = 0; s < 8; ++s) {
+                float a0 = (static_cast<float>(s) / 8.0f) * kTwoPi - ring.spinPhase;
+                float a1 = a0 + 0.48f;
+                Vec3 p0 = ring.position + (rightVec * std::cos(a0) + orthoUp * std::sin(a0)) * (ring.radius * 0.84f);
+                Vec3 p1 = ring.position + (rightVec * std::cos(a1) + orthoUp * std::sin(a1)) * (ring.radius * 0.84f);
+                DrawCylinderEx({p0.x, p0.y, p0.z}, {p1.x, p1.y, p1.z}, 0.42f, 0.42f, 5, glowCol);
+            }
+            // Central directional slipstream energy stream
+            Vec3 tail = ring.position - ring.forward * 6.0f;
+            Vec3 tip  = ring.position + ring.forward * 8.0f;
+            DrawCylinderEx({tail.x, tail.y, tail.z}, {tip.x, tip.y, tip.z}, 1.4f, 0.1f, 6, Color{85, 245, 255, 165});
+        }
+        pipeline.setEmissiveStrength(0.0f);
+    }
+
+    // 2C. Render Thermal Aether-Geyser Updraft Columns
+    pipeline.setEmissiveStrength(1.35f);
+    for (const auto& gey : world.archipelago.updrafts) {
+        if ((gey.basePosition - camPos).length() > 1400.0f) continue;
+        const int numRings = 5;
+        float colHeight = gey.topY - gey.basePosition.y;
+        for (int r = 0; r < numRings; ++r) {
+            float u = std::fmod(static_cast<float>(r) / static_cast<float>(numRings) + gey.phase * 0.14f, 1.0f);
+            float ry = gey.basePosition.y + u * colHeight;
+            float ringRad = gey.radius * (0.55f + 0.35f * std::sin(u * kPi));
+            uint8_t alpha = static_cast<uint8_t>((1.0f - std::abs(u * 2.0f - 1.0f)) * 185.0f + 35.0f);
+            rlPushMatrix();
+            rlTranslatef(gey.basePosition.x, ry, gey.basePosition.z);
+            rlScalef(ringRad, 1.2f, ringRad);
+            DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, Color{65, 245, 195, alpha});
+            rlPopMatrix();
+        }
+        DrawCylinderEx(
+            {gey.basePosition.x, gey.basePosition.y, gey.basePosition.z},
+            {gey.basePosition.x, gey.topY, gey.basePosition.z},
+            2.4f, 0.8f, 8, Color{75, 245, 215, 95}
+        );
+    }
+
+    // 2D. Render 6 Towering 3D Ancient Aether-Obelisk Monoliths
+    for (const auto& ob : world.archipelago.obelisks) {
+        if ((ob.position - camPos).length() > 1450.0f) continue;
+        float bobY = std::sin(ob.spinPhase * 1.4f) * 2.2f;
+        Vec3 pos = ob.position + Vec3{0.0f, bobY, 0.0f};
+
+        pipeline.setEmissiveStrength(0.25f);
+        // Floating basalt-and-orichalcum pedestal
+        rlPushMatrix();
+        rlTranslatef(pos.x, pos.y - 12.0f, pos.z);
+        rlScalef(7.5f, 11.0f, 7.5f);
+        DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, Color{65, 72, 92, 255});
+        rlPopMatrix();
+
+        // Main Obelisk Monolith Shaft & Capstone Pyramid
+        rlPushMatrix();
+        rlTranslatef(pos.x, pos.y + 4.0f, pos.z);
+        rlRotatef(ob.spinPhase * 12.0f, 0.0f, 1.0f, 0.0f);
+        rlPushMatrix();
+        rlScalef(3.6f, 22.0f, 3.6f);
+        DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, ob.attuned ? Color{85, 215, 235, 255} : Color{215, 175, 75, 255});
+        rlPopMatrix();
+        rlPushMatrix();
+        rlTranslatef(0.0f, 11.0f, 0.0f);
+        rlScalef(2.8f, 7.5f, 2.8f);
+        DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, Color{255, 225, 115, 255});
+        rlPopMatrix();
+        rlPopMatrix();
+
+        // Counter-rotating levitating Aether Rune Rings & Core Sphere
+        pipeline.setEmissiveStrength(ob.attuned ? 1.85f : 1.35f);
+        Color glowCol = ob.attuned ? Color{75, 250, 255, 240} : Color{255, 205, 75, 225};
+        rlPushMatrix();
+        rlTranslatef(pos.x, pos.y + 6.0f, pos.z);
+        rlRotatef(ob.spinPhase * 48.0f, 0.25f, 1.0f, 0.15f);
+        rlScalef(8.2f, 1.4f, 8.2f);
+        DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, glowCol);
+        rlPopMatrix();
+
+        rlPushMatrix();
+        rlTranslatef(pos.x, pos.y + 11.0f, pos.z);
+        rlRotatef(-ob.spinPhase * 64.0f, -0.25f, 1.0f, 0.30f);
+        rlScalef(6.0f, 1.2f, 6.0f);
+        DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, Color{115, 245, 255, 230});
+        rlPopMatrix();
+
+        DrawSphere({pos.x, pos.y + 21.5f, pos.z}, 2.4f, glowCol);
+        if (ob.attuned) {
+            DrawCylinderEx(
+                {pos.x, pos.y + 20.0f, pos.z},
+                {pos.x, pos.y + 240.0f, pos.z},
+                1.8f, 0.4f, 8, Color{85, 245, 255, 165}
+            );
+        }
+    }
+    pipeline.setEmissiveStrength(0.0f);
+
     // 3. Render Player Airship
     if (!world.playerShip.isDestroyed) {
         renderAirship(
@@ -160,7 +280,7 @@ void WorldRenderer::renderWorld3D(
         }
     }
 
-    // 5B. Render Expanding Acoustic Aether-Sonar Wave (if active)
+    // 5B. Render Expanding Acoustic Aether-Sonar Wave & Aether-EMP Shockwave Nova (if active)
     if (world.sonarWaveRadius > 0.0f) {
         pipeline.setEmissiveStrength(1.5f);
         float alphaPct = std::clamp(1.0f - (world.sonarWaveRadius / 650.0f), 0.0f, 1.0f);
@@ -169,6 +289,21 @@ void WorldRenderer::renderWorld3D(
             {world.sonarWaveOrigin.x, world.sonarWaveOrigin.y, world.sonarWaveOrigin.z},
             world.sonarWaveRadius, 12, 18, Color{75, 235, 255, a}
         );
+        pipeline.setEmissiveStrength(0.0f);
+    }
+    if (world.empWaveRadius > 0.0f) {
+        pipeline.setEmissiveStrength(1.75f);
+        float alphaPct = std::clamp(1.0f - (world.empWaveRadius / 205.0f), 0.0f, 1.0f);
+        uint8_t a = static_cast<uint8_t>(alphaPct * 240.0f);
+        DrawSphereWires(
+            {world.empWaveOrigin.x, world.empWaveOrigin.y, world.empWaveOrigin.z},
+            world.empWaveRadius, 14, 20, Color{225, 115, 255, a}
+        );
+        rlPushMatrix();
+        rlTranslatef(world.empWaveOrigin.x, world.empWaveOrigin.y, world.empWaveOrigin.z);
+        rlScalef(world.empWaveRadius, 1.8f, world.empWaveRadius);
+        DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, Color{95, 245, 255, a});
+        rlPopMatrix();
         pipeline.setEmissiveStrength(0.0f);
     }
 
@@ -200,7 +335,8 @@ void WorldRenderer::renderWorld3D(
         if (!validTarget) continue;
 
         float strainRatio = std::clamp(t.tensionForce / std::max(1.0f, t.maxBreakTension), 0.0f, 1.0f);
-        Color cableCol = t.isShockTether
+        bool electrified = t.isShockTether || world.unlockedRelics[3];
+        Color cableCol = electrified
             ? Color{75, 240, 255, 255}
             : Color{
                 static_cast<uint8_t>(185 + 70 * strainRatio),
@@ -209,7 +345,7 @@ void WorldRenderer::renderWorld3D(
                 255
             };
 
-        if (t.isShockTether) {
+        if (electrified) {
             pipeline.setEmissiveStrength(1.45f);
         }
         const int segs = 14;
@@ -219,7 +355,7 @@ void WorldRenderer::renderWorld3D(
             float u = static_cast<float>(s) / static_cast<float>(segs);
             Vec3 pt = Vec3::lerp(pA, pB, u);
             pt.y -= std::sin(u * kPi) * sag;
-            if (t.isShockTether && s < segs) {
+            if (electrified && s < segs) {
                 float jitter = std::sin(animTime_ * 34.0f + static_cast<float>(s * 3)) * 0.65f;
                 pt.x += jitter;
                 pt.y += std::cos(animTime_ * 28.0f + static_cast<float>(s * 5)) * 0.65f;
@@ -227,13 +363,13 @@ void WorldRenderer::renderWorld3D(
             DrawCylinderEx(
                 {prevPt.x, prevPt.y, prevPt.z},
                 {pt.x, pt.y, pt.z},
-                t.isShockTether ? 0.24f : 0.18f,
-                t.isShockTether ? 0.24f : 0.18f,
+                electrified ? 0.24f : 0.18f,
+                electrified ? 0.24f : 0.18f,
                 6, cableCol
             );
             prevPt = pt;
         }
-        if (t.isShockTether) {
+        if (electrified) {
             pipeline.setEmissiveStrength(0.0f);
         }
     }
@@ -255,6 +391,52 @@ void WorldRenderer::renderWorld3D(
         );
     }
 
+    // 7B. Render Floating Magnetic Aether Sky-Mines
+    for (const auto& m : world.skyMines) {
+        if (!m.active) continue;
+        pipeline.setEmissiveStrength(0.0f);
+        DrawSphere({m.position.x, m.position.y, m.position.z}, 1.85f, Color{62, 68, 78, 255});
+        // 6 directional spikes
+        const Vec3 dirs[6] = {{1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}};
+        for (int d = 0; d < 6; ++d) {
+            Vec3 tip = m.position + dirs[d] * 3.1f;
+            DrawCylinderEx({m.position.x, m.position.y, m.position.z}, {tip.x, tip.y, tip.z}, 0.38f, 0.05f, 5, Color{195, 145, 55, 255});
+        }
+        // Pulsing armed beacon
+        pipeline.setEmissiveStrength(1.65f);
+        bool blink = (std::sin(m.pulsePhase * 3.0f) > 0.0f);
+        Color coreCol = blink ? Color{255, 95, 55, 255} : Color{75, 240, 255, 255};
+        DrawSphere({m.position.x, m.position.y + 0.4f, m.position.z}, 1.15f, coreCol);
+    }
+
+    // 7C. Render Celestial Star-Aether Meteoroids
+    for (const auto& met : world.meteors) {
+        if (!met.active) continue;
+        rlPushMatrix();
+        rlTranslatef(met.position.x, met.position.y, met.position.z);
+        rlRotatef(animTime_ * 48.0f + static_cast<float>(met.id * 37), 0.4f, 1.0f, 0.3f);
+
+        // Dark asteroid crust cube + glowing violet-gold Star-Aether core
+        pipeline.setEmissiveStrength(0.25f);
+        DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, met.radius * 1.15f, Color{64, 48, 86, 255});
+
+        pipeline.setEmissiveStrength(1.75f);
+        DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, met.radius * 0.92f, Color{218, 115, 255, 255});
+        DrawSphereWires({0.0f, 0.0f, 0.0f}, met.radius * 1.38f, 6, 8, Color{255, 215, 85, 220});
+        rlPopMatrix();
+
+        // Trailing plasma coma tail
+        Vec3 tailEnd = met.position - met.velocity.normalized() * 18.0f;
+        DrawCylinderEx(
+            {met.position.x, met.position.y, met.position.z},
+            {tailEnd.x, tailEnd.y, tailEnd.z},
+            met.radius * 0.65f,
+            0.25f,
+            8,
+            Color{205, 95, 255, 165}
+        );
+    }
+
     // 8. Render Falling 3D Detached Block Debris
     pipeline.setEmissiveStrength(0.0f);
     for (const auto& d : world.debris) {
@@ -266,8 +448,9 @@ void WorldRenderer::renderWorld3D(
         rlPopMatrix();
     }
 
-    // 9. Render Floating Salvage Crates
+    // 9. Render Floating Salvage Crates & Active 3D Aether Tractor Beams
     pipeline.setEmissiveStrength(0.75f);
+    float cratePullRange = 75.0f + 85.0f * static_cast<float>(world.playerShip.tractorBeamCount);
     for (const auto& c : world.crates) {
         if (c.collected) continue;
         rlPushMatrix();
@@ -275,6 +458,58 @@ void WorldRenderer::renderWorld3D(
         rlRotatef(animTime_ * 55.0f, 0.0f, 1.0f, 0.0f);
         DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 2.4f, Color{235, 185, 55, 255});
         DrawCubeWires({0.0f, 0.0f, 0.0f}, 2.6f, 2.6f, 2.6f, Color{85, 235, 255, 255});
+        rlPopMatrix();
+
+        if (!world.playerShip.isDestroyed && (world.playerShip.position - c.position).length() < cratePullRange) {
+            pipeline.setEmissiveStrength(1.55f);
+            DrawCylinderEx(
+                {world.playerShip.position.x, world.playerShip.position.y + 1.5f, world.playerShip.position.z},
+                {c.position.x, c.position.y, c.position.z},
+                0.35f, 0.95f, 6, Color{65, 245, 195, 165}
+            );
+            pipeline.setEmissiveStrength(0.75f);
+        }
+    }
+    if (!world.playerShip.isDestroyed && world.playerShip.tractorBeamCount > 0) {
+        float metPullRange = 115.0f + 85.0f * static_cast<float>(world.playerShip.tractorBeamCount);
+        pipeline.setEmissiveStrength(1.65f);
+        for (const auto& met : world.meteors) {
+            if (!met.active) continue;
+            if ((world.playerShip.position - met.position).length() < metPullRange) {
+                DrawCylinderEx(
+                    {world.playerShip.position.x, world.playerShip.position.y + 2.0f, world.playerShip.position.z},
+                    {met.position.x, met.position.y, met.position.z},
+                    0.45f, 1.35f, 6, Color{65, 245, 195, 180}
+                );
+            }
+        }
+    }
+
+    // 9B. Render 3D Distress Beacon Sky-Survivor Lifeboat Pods
+    for (const auto& pod : world.survivorPods) {
+        if (pod.rescued) continue;
+        rlPushMatrix();
+        rlTranslatef(pod.position.x, pod.position.y, pod.position.z);
+
+        // Wooden lifeboat skiff hull
+        pipeline.setEmissiveStrength(0.0f);
+        rlPushMatrix();
+        rlScalef(2.4f, 1.4f, 4.2f);
+        DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, Color{168, 108, 56, 255});
+        rlPopMatrix();
+
+        // Overhead parachute / buoy balloon canopy
+        rlPushMatrix();
+        rlTranslatef(0.0f, 4.5f, 0.0f);
+        rlScalef(3.2f, 2.0f, 3.2f);
+        DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, Color{245, 232, 198, 255});
+        rlPopMatrix();
+
+        // Pulsing SOS signal flare beacon
+        pipeline.setEmissiveStrength(1.75f);
+        bool flareBright = (std::sin(pod.flarePhase * 2.5f) > 0.0f);
+        Color flareCol = flareBright ? Color{255, 85, 65, 255} : Color{255, 215, 75, 255};
+        DrawSphere({0.0f, 7.2f, 0.0f}, 1.25f, flareCol);
         rlPopMatrix();
     }
 
@@ -938,6 +1173,61 @@ void WorldRenderer::renderSingleBlock3D(
             rlTranslatef(0.0f, 0.22f, -0.55f);
             rlScalef(0.62f, 0.62f, 1.55f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+            break;
+        }
+        case BlockId::TractorBeam: {
+            // Gilded pedestal + counter-rotating magnetic tractor rings + emerald-cyan core
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.42f, 0.0f);
+            rlScalef(kVoxelSize * 0.82f, kVoxelSize * 0.36f, kVoxelSize * 0.82f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            pipeline.setEmissiveStrength(1.55f);
+            rlPushMatrix();
+            rlTranslatef(0.0f, 0.35f, 0.0f);
+            rlRotatef(propSpinAngle * 35.0f, 0.0f, 1.0f, 0.0f);
+            rlRotatef(30.0f, 1.0f, 0.0f, 0.0f);
+            rlScalef(0.82f, 0.82f, 0.82f);
+            DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
+
+            rlPushMatrix();
+            rlTranslatef(0.0f, 0.35f, 0.0f);
+            rlRotatef(-propSpinAngle * 28.0f, 0.0f, 1.0f, 0.0f);
+            rlRotatef(-30.0f, 0.0f, 0.0f, 1.0f);
+            rlScalef(0.62f, 0.62f, 0.62f);
+            DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            DrawSphere({0.0f, 0.42f, 0.0f}, 0.42f, priCol);
+            break;
+        }
+        case BlockId::RailgunBattery: {
+            // Armored electromagnetic turret mount + twin parallel accelerator rails
+            rlPushMatrix();
+            rlTranslatef(0.0f, -0.35f, 0.0f);
+            rlScalef(kVoxelSize * 0.88f, kVoxelSize * 0.46f, kVoxelSize * 0.88f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+            rlPopMatrix();
+
+            rlPushMatrix();
+            rlRotatef(turretYaw * kRadToDeg - static_cast<float>(orientation) * -90.0f, 0.0f, 1.0f, 0.0f);
+            rlRotatef(std::clamp(turretPitch * kRadToDeg, -25.0f, 45.0f), 1.0f, 0.0f, 0.0f);
+            for (int side : {-1, +1}) {
+                rlPushMatrix();
+                rlTranslatef(static_cast<float>(side) * 0.24f, 0.20f, -0.85f);
+                rlScalef(0.20f, 0.28f, 2.45f);
+                DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
+                rlPopMatrix();
+            }
+            pipeline.setEmissiveStrength(1.65f);
+            rlPushMatrix();
+            rlTranslatef(0.0f, 0.20f, -0.82f);
+            rlScalef(0.18f, 0.18f, 2.25f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
+            rlPopMatrix();
             rlPopMatrix();
             break;
         }

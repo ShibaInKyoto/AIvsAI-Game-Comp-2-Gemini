@@ -72,13 +72,23 @@ int testAirshipBuoyancyAndStructuralFracture() {
 }
 
 int testBlueprintsAndLeviathanKinematics() {
-    ASSERT_TRUE(ShipBlueprints::count() == 10, "Should have 10 flagship blueprints including Nemesis, Prometheus & Celestial Ark");
+    ASSERT_TRUE(ShipBlueprints::count() == 12, "Should have 12 flagship blueprints including Hyperion Rail-Dreadnought & Nebula Salvage Harvester");
     for (int i = 0; i < ShipBlueprints::count(); ++i) {
         Airship s(i + 1, "Blueprint Vessel", 0);
         ShipBlueprints::applyBlueprint(s, i);
         ASSERT_TRUE(!s.isDestroyed, "Every starter ship blueprint must not be marked destroyed");
         ASSERT_TRUE(s.occupiedBlockCount >= 20, "Every ship blueprint must have >= 20 blocks");
         ASSERT_TRUE(!s.isSinking, "Every starter ship blueprint must have positive buoyancy lift");
+    }
+    {
+        Airship railShip(91, "Hyperion Test", 0);
+        ShipBlueprints::applyBlueprint(railShip, 10);
+        ASSERT_TRUE(railShip.cannonCount >= 4, "Hyperion Rail-Dreadnought has >= 4 Railgun batteries");
+        ASSERT_TRUE(railShip.tractorBeamCount >= 1, "Hyperion Rail-Dreadnought has >= 1 TractorBeam");
+
+        Airship harvShip(92, "Nebula Test", 0);
+        ShipBlueprints::applyBlueprint(harvShip, 11);
+        ASSERT_TRUE(harvShip.tractorBeamCount >= 4, "Nebula Salvage Harvester has >= 4 Aether Tractor Grapplers");
     }
 
     // Verify all 6 Colossal Sky-Leviathan species initialize and step kinematics properly
@@ -111,6 +121,8 @@ int testBlueprintsAndLeviathanKinematics() {
         orig.setBlock(0, 4, 1, BlockId::ShockHarpoon, 0);
         orig.setBlock(0, 4, 2, BlockId::CapacitorBank, 0);
         orig.setBlock(0, 4, 3, BlockId::FlameMortar, 0);
+        orig.setBlock(0, 4, 4, BlockId::TractorBeam, 0);
+        orig.setBlock(0, 4, 5, BlockId::RailgunBattery, 0);
         int expectedCount = orig.occupiedBlockCount;
         ASSERT_TRUE(ShipBlueprints::saveCustomBlueprint(orig, "/tmp/test_custom_ship.aeth"), "Save custom blueprint to disk");
 
@@ -121,6 +133,8 @@ int testBlueprintsAndLeviathanKinematics() {
         ASSERT_TRUE(loaded.getCell(0, 4, 1).id == BlockId::ShockHarpoon, "Loaded custom block at (0,4,1) is ShockHarpoon");
         ASSERT_TRUE(loaded.getCell(0, 4, 2).id == BlockId::CapacitorBank, "Loaded custom block at (0,4,2) is CapacitorBank");
         ASSERT_TRUE(loaded.getCell(0, 4, 3).id == BlockId::FlameMortar, "Loaded custom block at (0,4,3) is FlameMortar");
+        ASSERT_TRUE(loaded.getCell(0, 4, 4).id == BlockId::TractorBeam, "Loaded custom block at (0,4,4) is TractorBeam");
+        ASSERT_TRUE(loaded.getCell(0, 4, 5).id == BlockId::RailgunBattery, "Loaded custom block at (0,4,5) is RailgunBattery");
     }
     return 0;
 }
@@ -194,6 +208,126 @@ int testOfficersAbilitiesTradingAndCampaignPersistence() {
     }
     ASSERT_TRUE(strongholdCount >= 4, "Archipelago contains fortified stronghold citadels with bastion turrets");
 
+    // Verify 12 Aether-Slipstream Rings exist and passing through one grants Turbo Impulse & Regatta Combo
+    ASSERT_TRUE(world.archipelago.slipstreams.size() == 12, "Archipelago contains 12 Aether-Slipstream Skyway Rings");
+    world.playerShip.position = world.archipelago.slipstreams[0].position;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.slipstreamRingsPassedStat == 1, "Flying through Slipstream Ring increments slipstreamRingsPassedStat");
+    ASSERT_TRUE(world.slipstreamComboCount == 1, "Flying through Slipstream Ring starts x1 Regatta Chain Combo");
+
+    // Verify Magnetic Aether Sky-Mine [G] deployment and homing detonation
+    ASSERT_TRUE(world.deploySkyMine(), "Deploying Magnetic Aether Sky-Mine should succeed");
+    ASSERT_TRUE(world.skyMines.size() == 1, "1 active SkyMine3D deployed behind stern");
+    world.skyMines[0].armTimer = 0.0f;
+    world.skyMines[0].position = world.leviathans[0].segments[0].position + Vec3{0.0f, 0.0f, 4.0f};
+    float levHpBeforeMine = world.leviathans[0].totalHp;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.skyMineHitsStat == 1, "SkyMine3D magnetically locked and detonated on Leviathan");
+    ASSERT_TRUE(world.leviathans[0].totalHp < levHpBeforeMine, "SkyMine3D dealt AoE blast damage to Leviathan");
+
+    // Verify Kinetic Bow Ramming collision physics
+    world.ramCooldownTimer = 0.0f;
+    world.playerShip.position = world.leviathans[0].segments[1].position - Vec3{0.0f, 0.0f, 8.0f};
+    world.playerShip.velocity = {0.0f, 0.0f, 28.0f};
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.ramImpactsStat == 1, "High-speed collision triggers Kinetic Bow Ram impact");
+
+    // Verify Sky-Admiral Commendation Medals unlocked (Relic Awakener + Minefield Tactician + Iron Prow Rammer)
+    ASSERT_TRUE(world.earnedMedalCount() >= 3, "At least 3 Sky-Admiral Commendation Medals automatically awarded");
+
+    // Verify Celestial Star-Aether Meteoroid spawning & proximity tractor harvesting
+    ASSERT_TRUE(world.meteors.size() >= 3, "Initial world spawns 3 Celestial Star-Aether Meteoroids");
+    int aethBeforeMeteor = world.playerAether;
+    world.playerShip.position = world.meteors[0].position;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.meteorsHarvestedStat == 1, "Proximity tractor-harvesting Star-Aether Meteoroid increments meteorsHarvestedStat");
+    ASSERT_TRUE(world.playerAether >= aethBeforeMeteor + 14, "Star-Aether Meteoroid grants +14 Aetherium");
+
+    // Verify Interactive World Map Fast-Travel to an Allied Drydock Port
+    ASSERT_TRUE(world.fastTravelToIsland(0), "Fast-Travel to Allied Port #0 (New Horizon Drydock) succeeds");
+
+    // Verify Drydock Orichalcum Hull Overclock [O]
+    float maxHpBeforeOc = world.playerShip.totalMaxHp;
+    ASSERT_TRUE(world.overclockPlayerShip(), "Orichalcum Hull Overclock Tier 1 succeeds");
+    ASSERT_TRUE(world.hullOverclockTier == 1, "hullOverclockTier incremented to 1");
+    ASSERT_TRUE(world.playerShip.totalMaxHp > maxHpBeforeOc * 1.12f, "Overclock increases flagship totalMaxHp by +15%");
+
+    // Verify Imperial Treasure Galleon Convoy arrival dividend
+    ASSERT_TRUE(world.convoyShipId > 0, "Imperial Treasure Galleon Convoy spawned");
+    for (auto& npc : world.npcShips) {
+        if (npc.id() == world.convoyShipId) {
+            npc.position = world.archipelago.islands[static_cast<size_t>(world.convoyTargetIslandIdx)].position + Vec3{0.0f, 38.0f, 0.0f};
+            break;
+        }
+    }
+    int goldBeforeConvoy = world.playerGold;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.convoysEscortedStat == 1, "Imperial Treasure Galleon reaching port increments convoysEscortedStat");
+    ASSERT_TRUE(world.playerGold >= goldBeforeConvoy + 180, "Imperial Treasure Galleon reaching port awards +180G Escort Dividend");
+
+    // Verify 8 Thermal Aether-Geyser Updraft Columns & vertical buoyant lift
+    ASSERT_TRUE(world.archipelago.updrafts.size() == 8, "Archipelago contains 8 Thermal Aether-Geyser Updraft Columns");
+    world.playerShip.position = {world.archipelago.updrafts[0].basePosition.x, 110.0f, world.archipelago.updrafts[0].basePosition.z};
+    float vyBeforeGeyser = world.playerShip.velocity.y;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.playerShip.velocity.y > vyBeforeGeyser, "Thermal Aether-Geyser applies upward buoyancy velocity impulse");
+
+    // Verify Drydock One-Click Airframe Armor Refit (Timber -> Ironclad)
+    float hpBeforeRefit = world.playerShip.totalMaxHp;
+    ASSERT_TRUE(world.refitPlayerAirframe(), "One-click Airframe Refit from Timber to Ironclad succeeds");
+    ASSERT_TRUE(world.playerShip.totalMaxHp > hpBeforeRefit, "Airframe Refit increases flagship total structural HP");
+
+    // Verify Corsair Dread-Ark Raid Boss summoning & Aether-EMP Shockwave Nova [4]
+    world.spawnCorsairDreadArk();
+    ASSERT_TRUE(world.dreadArkShipId > 0, "Corsair Dread-Ark Sovereign Raid Boss spawned");
+    ASSERT_TRUE(world.triggerEmpNova(), "Aether-EMP Shockwave Nova [4] triggers when ready");
+    ASSERT_TRUE(world.empNovasTriggeredStat == 1, "empNovasTriggeredStat incremented to 1");
+    ASSERT_TRUE(world.empWaveRadius > 0.0f, "empWaveRadius initialized for 3D shockwave rendering");
+
+    // Verify 3D Distress Beacon Sky-Survivor Lifeboat Pod rescue
+    ASSERT_TRUE(!world.survivorPods.empty(), "Archipelago spawns Distress Beacon Sky-Survivor Lifeboat Pods");
+    int goldBeforeRescue = world.playerGold;
+    world.playerShip.position = world.survivorPods[0].position;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.survivorsRescuedStat >= 1, "Flying within rescue range of SOS Lifeboat Pod increments survivorsRescuedStat");
+    ASSERT_TRUE(world.playerGold >= goldBeforeRescue + 140, "Rescuing SOS Lifeboat Pod grants >= +140 Gold");
+
+    // Verify Automated CIWS Flak Turret Point-Defense Interception & Drydock Auto-Stabilizer
+    world.playerShip.setBlock(0, 2, -2, BlockId::FlakTurret, 0);
+    ASSERT_TRUE(world.playerShip.flakTurretCount >= 1, "Installing Rotary Flak Turret increments flakTurretCount");
+    Projectile3D hostileProj;
+    hostileProj.id = 99999;
+    hostileProj.ownerShipId = 555;
+    hostileProj.ownerFaction = 2;
+    hostileProj.position = world.playerShip.position + Vec3{18.0f, 2.0f, 0.0f};
+    hostileProj.prevPosition = hostileProj.position;
+    hostileProj.velocity = {-20.0f, 0.0f, 0.0f};
+    hostileProj.damage = 45.0f;
+    hostileProj.lifetime = 3.0f;
+    hostileProj.active = true;
+    world.projectiles.push_back(hostileProj);
+    world.pointDefenseCooldown = 0.0f;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.projectilesInterceptedStat >= 1, "CIWS Flak Turret intercepts incoming hostile projectile within 65m");
+
+    ASSERT_TRUE(world.autoStabilizePlayerShip(), "Drydock 1-Click Naval Architect Auto-Stabilizer succeeds");
+
+    // Verify 6 Ancient Aether-Obelisk Monoliths & Attunement Rewards (+220G, +10Ae, +85 Max Shield HP)
+    ASSERT_TRUE(world.archipelago.obelisks.size() == 6, "Archipelago contains 6 Ancient Aether-Obelisk Monoliths");
+    int obelisksBefore = world.obelisksAttunedStat;
+    for (const auto& ob : world.archipelago.obelisks) {
+        if (!ob.attuned) {
+            float maxShieldBefore = world.playerShip.maxShieldHp;
+            int goldBeforeOb = world.playerGold;
+            world.playerShip.position = ob.position;
+            world.step(1.0f / 120.0f);
+            ASSERT_TRUE(world.obelisksAttunedStat == obelisksBefore + 1, "Flying within 68m of Ancient Aether-Obelisk attunes it");
+            ASSERT_TRUE(world.playerGold >= goldBeforeOb + 220, "Attuning Ancient Aether-Obelisk grants >= +220 Gold");
+            ASSERT_TRUE(world.playerShip.maxShieldHp >= maxShieldBefore + 84.0f, "Attuning Ancient Aether-Obelisk permanently boosts Max Shield HP by +85");
+            break;
+        }
+    }
+
     ASSERT_TRUE(world.saveCampaign("/tmp/test_campaign.aeth"), "Save campaign state to disk");
 
     World worldLoaded;
@@ -202,7 +336,14 @@ int testOfficersAbilitiesTradingAndCampaignPersistence() {
     ASSERT_TRUE(worldLoaded.officerRanks[0] == 1, "Loaded campaign preserves officer rank");
     ASSERT_TRUE(worldLoaded.playerCargo[0] == initialGrain + 1, "Loaded campaign preserves commodity cargo");
     ASSERT_TRUE(worldLoaded.unlockedRelics[0] == true, "Loaded campaign preserves awakened Ancient Relic");
+    ASSERT_TRUE(worldLoaded.earnedMedalCount() >= 3, "Loaded campaign preserves Sky-Admiral Commendation Medals");
     ASSERT_TRUE(worldLoaded.playerShip.hullLiveryId == 1, "Loaded campaign preserves Custom Hull Livery");
+    ASSERT_TRUE(worldLoaded.meteorsHarvestedStat >= 1, "Loaded campaign preserves meteorsHarvestedStat");
+    ASSERT_TRUE(worldLoaded.hullOverclockTier == 1, "Loaded campaign preserves hullOverclockTier");
+    ASSERT_TRUE(worldLoaded.survivorsRescuedStat >= 1, "Loaded campaign preserves survivorsRescuedStat");
+    ASSERT_TRUE(worldLoaded.empNovasTriggeredStat == 1, "Loaded campaign preserves empNovasTriggeredStat");
+    ASSERT_TRUE(worldLoaded.projectilesInterceptedStat >= 1, "Loaded campaign preserves projectilesInterceptedStat");
+    ASSERT_TRUE(worldLoaded.obelisksAttunedStat >= 1, "Loaded campaign preserves obelisksAttunedStat");
     return 0;
 }
 
@@ -230,7 +371,7 @@ int main() {
     std::printf("[PASS] 3D Airship Buoyancy, Shield Dome & BFS Structural Fracture Solver\n");
 
     if (testBlueprintsAndLeviathanKinematics() != 0) return 1;
-    std::printf("[PASS] 10 Ship Hull Blueprints, 20 Block Types & 6 Leviathan Species Kinematics\n");
+    std::printf("[PASS] 12 Ship Hull Blueprints, 22 Block Types & 6 Leviathan Species Kinematics\n");
 
     if (testOfficersAbilitiesTradingAndCampaignPersistence() != 0) return 1;
     std::printf("[PASS] Officers, Commodity Trading, Fleet Orders, Homing Torpedoes & Campaign Persistence\n");

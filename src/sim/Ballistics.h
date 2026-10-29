@@ -57,6 +57,21 @@ struct ExplosionEvent3D {
     Vec3 arcStart;
 };
 
+struct SkyMine3D {
+    int id = 0;
+    int ownerShipId = 0;
+    int ownerFaction = 0;
+    Vec3 position{0.0f, 130.0f, 0.0f};
+    Vec3 velocity{0.0f, 0.0f, 0.0f};
+    float triggerRadius = 46.0f;
+    float blastRadius = 15.0f;
+    float damage = 260.0f;
+    float armTimer = 0.55f;
+    float lifetime = 45.0f;
+    float pulsePhase = 0.0f;
+    bool active = true;
+};
+
 // Computes 3D ballistic lead position for a moving target
 Vec3 computeBallisticLeadPoint(
     const Vec3& shooterPos,

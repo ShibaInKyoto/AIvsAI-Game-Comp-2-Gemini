@@ -8,7 +8,7 @@ namespace aethernaut {
 
 namespace {
 
-const std::array<ShipBlueprintInfo, 10> kBlueprints = {{
+const std::array<ShipBlueprintInfo, 12> kBlueprints = {{
     {
         0, "Zephyr Sky-Cutter", "Balanced Expedition Sloop",
         "Agile single-hull sky-cutter with overhead lift envelope, bow harpoon winch, and broadside deck guns."
@@ -48,6 +48,14 @@ const std::array<ShipBlueprintInfo, 10> kBlueprints = {{
     {
         9, "Celestial Ark-Carrier", "Imperial Trimaran Titan",
         "Colossal 3-hull Orichalcum trimaran flagship with Triple Shield Domes, Torpedoes, Plasma Lances & Ramjets."
+    },
+    {
+        10, "Hyperion Rail-Dreadnought", "Electromagnetic Sniper Dreadnought",
+        "Armored dreadnought armed with 4 Hyper-Velocity Railguns, 2 Shock-Harpoons, Dual Shield Domes & Capacitors."
+    },
+    {
+        11, "Nebula Salvage Harvester", "Deep-Sky Mining & Tractor Ark",
+        "Expeditionary harvester equipped with 4 Aether Tractor Grapplers (+340m pull), 4 Siege Cannons & 2 Harpoons."
     }
 }};
 
@@ -507,6 +515,103 @@ void buildCelestialArkCarrier(Airship& s) {
     s.setBlock(0, 0, 7, BlockId::GyroRudder, 2);
 }
 
+void buildHyperionRailDreadnought(Airship& s) {
+    s.clearAllBlocks();
+    for (int z = -7; z <= 7; ++z) {
+        int halfW = (std::abs(z) >= 6) ? 1 : ((std::abs(z) == 5) ? 2 : 3);
+        for (int x = -halfW; x <= halfW; ++x) {
+            s.setBlock(x, -1, z, BlockId::IronArmor);
+            s.setBlock(x, 0, z, (std::abs(x) == halfW) ? BlockId::OrichalcumArmor : BlockId::IronArmor);
+        }
+    }
+    for (int z : {-3, 0, 3}) {
+        s.setBlock(-1, 0, z, BlockId::AetherCore);
+        s.setBlock(+1, 0, z, BlockId::AetherCore);
+    }
+    s.setBlock(0, 1, 4, BlockId::HelmBridge);
+    s.setBlock(-1, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(+1, 1, 3, BlockId::ShieldProjector);
+    s.setBlock(-1, 1, 1, BlockId::CapacitorBank);
+    s.setBlock(+1, 1, 1, BlockId::CapacitorBank);
+    s.setBlock(0, 1, 0, BlockId::TractorBeam);
+    s.setBlock(0, 1, -1, BlockId::RepairCrane);
+
+    // Overhead Lift Envelope
+    for (int z = -5; z <= 4; ++z) {
+        s.setBlock(-2, 1, z, BlockId::OrichalcumArmor);
+        s.setBlock(+2, 1, z, BlockId::OrichalcumArmor);
+        for (int x = -2; x <= 2; ++x) {
+            s.setBlock(x, 2, z, BlockId::LiftBalloon);
+            s.setBlock(x, 3, z, BlockId::LiftBalloon);
+        }
+    }
+
+    // 4 Hyper-Velocity Railgun Batteries + 2 Voltaic Shock-Harpoons
+    s.setBlock(-3, 1, -2, BlockId::RailgunBattery, 3);
+    s.setBlock(+3, 1, -2, BlockId::RailgunBattery, 1);
+    s.setBlock(-3, 1, +2, BlockId::RailgunBattery, 3);
+    s.setBlock(+3, 1, +2, BlockId::RailgunBattery, 1);
+    s.setBlock(-1, 1, -5, BlockId::ShockHarpoon, 0);
+    s.setBlock(+1, 1, -5, BlockId::ShockHarpoon, 0);
+
+    // 4 Aether-Ramjet Thrusters
+    s.setBlock(-2, 0, 7, BlockId::AfterburnerJet, 2);
+    s.setBlock(-1, 0, 7, BlockId::AfterburnerJet, 2);
+    s.setBlock(+1, 0, 7, BlockId::AfterburnerJet, 2);
+    s.setBlock(+2, 0, 7, BlockId::AfterburnerJet, 2);
+    s.setBlock(0, 0, 6, BlockId::GyroRudder, 2);
+}
+
+void buildNebulaSalvageHarvester(Airship& s) {
+    s.clearAllBlocks();
+    for (int z = -6; z <= 6; ++z) {
+        int halfW = (std::abs(z) == 6) ? 1 : ((std::abs(z) == 5) ? 2 : 3);
+        for (int x = -halfW; x <= halfW; ++x) {
+            s.setBlock(x, -1, z, BlockId::IronArmor);
+            s.setBlock(x, 0, z, (std::abs(x) == halfW) ? BlockId::OrichalcumArmor : BlockId::WoodHull);
+        }
+    }
+    s.setBlock(-1, 0, -1, BlockId::AetherCore);
+    s.setBlock(+1, 0, -1, BlockId::AetherCore);
+    s.setBlock(0, 0, +2, BlockId::AetherCore);
+    s.setBlock(0, 1, +3, BlockId::HelmBridge);
+    s.setBlock(0, 1, +2, BlockId::ShieldProjector);
+    s.setBlock(0, 1, +1, BlockId::RepairCrane);
+    s.setBlock(0, 1, -1, BlockId::RepairCrane);
+
+    // 4 Aether Tractor Grapplers on Upper Deck Outriggers
+    s.setBlock(-2, 1, -2, BlockId::TractorBeam, 0);
+    s.setBlock(+2, 1, -2, BlockId::TractorBeam, 0);
+    s.setBlock(-2, 1, +2, BlockId::TractorBeam, 2);
+    s.setBlock(+2, 1, +2, BlockId::TractorBeam, 2);
+
+    // Overhead Lift Cells
+    for (int z = -4; z <= 3; ++z) {
+        for (int x = -2; x <= 2; ++x) {
+            s.setBlock(x, 2, z, BlockId::LiftBalloon);
+            if (std::abs(x) <= 1) {
+                s.setBlock(x, 3, z, BlockId::LiftBalloon);
+            }
+        }
+    }
+
+    // 4 Broadside Siege Cannons + 2 Harpoon Winches + 1 Railgun
+    s.setBlock(0, 1, -4, BlockId::RailgunBattery, 0);
+    s.setBlock(-1, 1, -5, BlockId::HarpoonWinch, 0);
+    s.setBlock(+1, 1, -5, BlockId::HarpoonWinch, 0);
+    s.setBlock(-3, 1, -1, BlockId::DeckCannon, 3);
+    s.setBlock(+3, 1, -1, BlockId::DeckCannon, 1);
+    s.setBlock(-3, 1, +1, BlockId::DeckCannon, 3);
+    s.setBlock(+3, 1, +1, BlockId::DeckCannon, 1);
+
+    // Propulsion
+    s.setBlock(-2, 0, 6, BlockId::SteamPropeller, 2);
+    s.setBlock(0, 0, 6, BlockId::AfterburnerJet, 2);
+    s.setBlock(+2, 0, 6, BlockId::SteamPropeller, 2);
+    s.setBlock(-1, 0, 5, BlockId::GyroRudder, 2);
+    s.setBlock(+1, 0, 5, BlockId::GyroRudder, 2);
+}
+
 } // namespace
 
 int ShipBlueprints::count() {
@@ -532,6 +637,8 @@ void ShipBlueprints::applyBlueprint(Airship& ship, int index) {
         case 7: buildNemesisTorpedoCruiser(ship); break;
         case 8: buildPrometheusFireGalleon(ship); break;
         case 9: buildCelestialArkCarrier(ship); break;
+        case 10: buildHyperionRailDreadnought(ship); break;
+        case 11: buildNebulaSalvageHarvester(ship); break;
         default: buildZephyrSloop(ship); break;
     }
     ship.recomputeMetrics();

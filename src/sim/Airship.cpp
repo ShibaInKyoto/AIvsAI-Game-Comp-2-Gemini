@@ -173,6 +173,8 @@ void Airship::recomputeMetrics() {
     liftCellCount = 0;
     shieldProjectorCount = 0;
     capacitorCount = 0;
+    tractorBeamCount = 0;
+    flakTurretCount = 0;
 
     float computedShieldMax = 0.0f;
     int afterburnerCount = 0;
@@ -215,7 +217,8 @@ void Airship::recomputeMetrics() {
                     cell.id == BlockId::TeslaCoil ||
                     cell.id == BlockId::PlasmaLance ||
                     cell.id == BlockId::TorpedoLauncher ||
-                    cell.id == BlockId::FlameMortar) {
+                    cell.id == BlockId::FlameMortar ||
+                    cell.id == BlockId::RailgunBattery) {
                     cannonCount++;
                 }
                 if (cell.id == BlockId::HarpoonWinch || cell.id == BlockId::ShockHarpoon) {
@@ -235,6 +238,12 @@ void Airship::recomputeMetrics() {
                 }
                 if (cell.id == BlockId::CapacitorBank) {
                     capacitorCount++;
+                }
+                if (cell.id == BlockId::TractorBeam) {
+                    tractorBeamCount++;
+                }
+                if (cell.id == BlockId::FlakTurret) {
+                    flakTurretCount++;
                 }
                 if (cell.id == BlockId::HelmBridge || cell.id == BlockId::AetherCore) {
                     hasCommandOrCore = true;
@@ -538,6 +547,7 @@ void Airship::updatePhysics(
                     cell.id == BlockId::PlasmaLance ||
                     cell.id == BlockId::TorpedoLauncher ||
                     cell.id == BlockId::FlameMortar ||
+                    cell.id == BlockId::RailgunBattery ||
                     cell.id == BlockId::HarpoonWinch ||
                     cell.id == BlockId::ShockHarpoon) {
                     Vec3 bPos = gridToLocalPos(gx, gy, gz);
@@ -636,7 +646,8 @@ void Airship::fireWeapons(
                                     cell.id == BlockId::TeslaCoil ||
                                     cell.id == BlockId::PlasmaLance ||
                                     cell.id == BlockId::TorpedoLauncher ||
-                                    cell.id == BlockId::FlameMortar);
+                                    cell.id == BlockId::FlameMortar ||
+                                    cell.id == BlockId::RailgunBattery);
                 bool isHarpoon = (cell.id == BlockId::HarpoonWinch || cell.id == BlockId::ShockHarpoon);
 
                 if ((fireCannons && isArtillery) || (fireHarpoons && isHarpoon)) {
@@ -667,7 +678,7 @@ void Airship::fireWeapons(
                     cell.weaponCooldown = spec.weaponCooldown / std::max(0.5f, powerEfficiency * reloadMultiplier);
 
                     // Apply physical cannon recoil impulse to the ship!
-                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::PlasmaLance || cell.id == BlockId::FlameMortar) {
+                    if (cell.id == BlockId::DeckCannon || cell.id == BlockId::PlasmaLance || cell.id == BlockId::FlameMortar || cell.id == BlockId::RailgunBattery) {
                         velocity -= aimDir * (18.0f / std::max(50.0f, totalMass));
                     }
                 }

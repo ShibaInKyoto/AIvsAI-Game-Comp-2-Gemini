@@ -82,6 +82,33 @@ struct StormCell {
     float lightningFlashAlpha = 0.0f;
 };
 
+struct SlipstreamRing {
+    int id = 0;
+    Vec3 position{0.0f, 135.0f, 0.0f};
+    Vec3 forward{0.0f, 0.0f, -1.0f};
+    float radius = 21.0f;
+    float cooldownTimer = 0.0f;
+    float spinPhase = 0.0f;
+};
+
+struct UpdraftGeyser {
+    int id = 0;
+    Vec3 basePosition{0.0f, 45.0f, 0.0f};
+    float radius = 28.0f;
+    float topY = 195.0f;
+    float updraftSpeed = 24.0f;
+    float phase = 0.0f;
+};
+
+struct AetherObelisk {
+    int id = 0;
+    std::string name;
+    Vec3 position{0.0f, 140.0f, 0.0f};
+    float attuneRadius = 68.0f;
+    float spinPhase = 0.0f;
+    bool attuned = false;
+};
+
 class Archipelago {
 public:
     static const std::array<CommoditySpec, kCommodityCount>& getCommoditySpecs();
@@ -94,6 +121,9 @@ public:
 
     std::vector<SkyIsland> islands;
     std::vector<StormCell> storms;
+    std::vector<SlipstreamRing> slipstreams;
+    std::vector<UpdraftGeyser> updrafts;
+    std::vector<AetherObelisk> obelisks;
     Vec3 baseWind{4.5f, 0.0f, -2.5f};
     float timeOfDay = 0.32f; // 0..1 cycle (0.25 = morning, 0.5 = high noon, 0.78 = sunset)
 

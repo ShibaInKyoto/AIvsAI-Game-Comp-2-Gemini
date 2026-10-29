@@ -67,6 +67,13 @@ public:
         int screenH,
         bool& inoutShowRelics
     );
+
+    void drawMedalsModal(
+        World& world,
+        int screenW,
+        int screenH,
+        bool& inoutShowMedals
+    );
 };
 
 } // namespace aethernaut

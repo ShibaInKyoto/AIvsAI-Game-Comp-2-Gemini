@@ -169,6 +169,8 @@ public:
     int liftCellCount = 0;
     int shieldProjectorCount = 0;
     int capacitorCount = 0;
+    int tractorBeamCount = 0;
+    int flakTurretCount = 0;
     Vec3 centerOfMassLocal{0.0f, 0.0f, 0.0f};
     Vec3 centerOfLiftLocal{0.0f, 0.0f, 0.0f};
     float boundingRadius = 18.0f;

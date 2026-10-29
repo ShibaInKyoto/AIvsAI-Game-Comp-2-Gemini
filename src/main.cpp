@@ -193,6 +193,7 @@ int main(int argc, char** argv) {
     bool showCodex = false;
     bool showLedgerModal = false;
     bool showRelicsModal = false;
+    bool showMedalsModal = false;
 
     float totalElapsed = 0.0f;
     float physicsAccumulator = 0.0f;
@@ -260,23 +261,27 @@ int main(int argc, char** argv) {
             }
             if (IsKeyPressed(KEY_M)) {
                 showWorldMap = !showWorldMap;
-                if (showWorldMap) { showCrewModal = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; }
+                if (showWorldMap) { showCrewModal = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; showMedalsModal = false; }
             }
             if (IsKeyPressed(KEY_K)) {
                 showCrewModal = !showCrewModal;
-                if (showCrewModal) { showWorldMap = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; }
+                if (showCrewModal) { showWorldMap = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; showMedalsModal = false; }
             }
             if (IsKeyPressed(KEY_J)) {
                 showLedgerModal = !showLedgerModal;
-                if (showLedgerModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showRelicsModal = false; }
+                if (showLedgerModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showRelicsModal = false; showMedalsModal = false; }
             }
             if (IsKeyPressed(KEY_L)) {
                 showRelicsModal = !showRelicsModal;
-                if (showRelicsModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showLedgerModal = false; }
+                if (showRelicsModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showLedgerModal = false; showMedalsModal = false; }
+            }
+            if (IsKeyPressed(KEY_O)) {
+                showMedalsModal = !showMedalsModal;
+                if (showMedalsModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; }
             }
             if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_F1)) {
                 showCodex = !showCodex;
-                if (showCodex) { showWorldMap = false; showCrewModal = false; showLedgerModal = false; showRelicsModal = false; }
+                if (showCodex) { showWorldMap = false; showCrewModal = false; showLedgerModal = false; showRelicsModal = false; showMedalsModal = false; }
             }
             if (IsKeyPressed(KEY_Z)) {
                 world.cycleFleetOrder();
@@ -287,14 +292,23 @@ int main(int argc, char** argv) {
             if (IsKeyPressed(KEY_U)) {
                 world.hireAlliedWingman();
             }
-            if (IsKeyPressed(KEY_X)) {
+            if (IsKeyPressed(KEY_X) || IsKeyPressed(KEY_ONE)) {
                 world.triggerDamageControl();
             }
-            if (IsKeyPressed(KEY_C)) {
+            if (IsKeyPressed(KEY_C) || IsKeyPressed(KEY_TWO)) {
                 world.triggerSonarPing();
+            }
+            if (IsKeyPressed(KEY_G) || IsKeyPressed(KEY_THREE)) {
+                world.deploySkyMine();
+            }
+            if (IsKeyPressed(KEY_FOUR)) {
+                world.triggerEmpNova();
             }
             if (IsKeyPressed(KEY_N)) {
                 world.summonApexLeviathan();
+            }
+            if (IsKeyPressed(KEY_I)) {
+                world.spawnCorsairDreadArk();
             }
             if (IsKeyPressed(KEY_F6)) {
                 world.saveCampaign("campaign_save.aeth");
@@ -310,7 +324,7 @@ int main(int argc, char** argv) {
             }
 
             // Player Manual Flight / Deck Controls
-            if (!world.playerAutopilot && !showWorldMap && !showCrewModal && !showCodex && !showLedgerModal && !showRelicsModal) {
+            if (!world.playerAutopilot && !showWorldMap && !showCrewModal && !showCodex && !showLedgerModal && !showRelicsModal && !showMedalsModal) {
                 if (world.isPlayerWalkingOnDeck) {
                     float fwd = 0.0f, right = 0.0f;
                     if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) fwd += 1.0f;
@@ -475,6 +489,9 @@ int main(int argc, char** argv) {
             }
             if (showRelicsModal) {
                 hudRenderer.drawRelicVaultModal(world, screenW, screenH, showRelicsModal);
+            }
+            if (showMedalsModal) {
+                hudRenderer.drawMedalsModal(world, screenW, screenH, showMedalsModal);
             }
             if (showCodex) {
                 hudRenderer.drawCodexModal(screenW, screenH, showCodex);
