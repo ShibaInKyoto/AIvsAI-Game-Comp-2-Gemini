@@ -13,12 +13,14 @@ uniform mat4 mvp;
 uniform mat4 matModel;
 uniform mat4 matNormal;
 out vec3 fragPosition;
+out vec3 fragLocalPos;
 out vec2 fragTexCoord;
 out vec4 fragColor;
 out vec3 fragNormal;
 void main() {
     vec4 worldPos = matModel * vec4(vertexPosition, 1.0);
     fragPosition = worldPos.xyz;
+    fragLocalPos = vertexPosition;
     fragTexCoord = vertexTexCoord;
     fragColor = vertexColor;
     fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
@@ -28,6 +30,7 @@ void main() {
 
 const char* kFallbackWorldFS = R"(#version 330
 in vec3 fragPosition;
+in vec3 fragLocalPos;
 in vec2 fragTexCoord;
 in vec4 fragColor;
 in vec3 fragNormal;
@@ -41,6 +44,17 @@ uniform vec3 uGroundAmbient;
 uniform vec3 uFogColor;
 uniform float uFogDensity;
 uniform float uEmissive;
+uniform int uMaterialType;
+uniform float uTime;
+uniform vec3 uSearchlightPos;
+uniform vec3 uSearchlightDir;
+uniform float uSearchlightActive;
+uniform vec3 uBossLightPos;
+uniform vec3 uBossLightColor;
+uniform float uBossLightIntensity;
+uniform vec3 uSonarOrigin;
+uniform float uSonarRadius;
+uniform float uSonarStrength;
 out vec4 finalColor;
 void main() {
     vec4 texelColor = texture(texture0, fragTexCoord);
@@ -120,6 +134,20 @@ void ShaderPipeline::init(int width, int height) {
     locFogColor_ = GetShaderLocation(worldShader, "uFogColor");
     locFogDensity_ = GetShaderLocation(worldShader, "uFogDensity");
     locEmissive_ = GetShaderLocation(worldShader, "uEmissive");
+    locMaterialType_ = GetShaderLocation(worldShader, "uMaterialType");
+    locTime_ = GetShaderLocation(worldShader, "uTime");
+
+    locSearchlightPos_ = GetShaderLocation(worldShader, "uSearchlightPos");
+    locSearchlightDir_ = GetShaderLocation(worldShader, "uSearchlightDir");
+    locSearchlightActive_ = GetShaderLocation(worldShader, "uSearchlightActive");
+
+    locBossLightPos_ = GetShaderLocation(worldShader, "uBossLightPos");
+    locBossLightColor_ = GetShaderLocation(worldShader, "uBossLightColor");
+    locBossLightIntensity_ = GetShaderLocation(worldShader, "uBossLightIntensity");
+
+    locSonarOrigin_ = GetShaderLocation(worldShader, "uSonarOrigin");
+    locSonarRadius_ = GetShaderLocation(worldShader, "uSonarRadius");
+    locSonarStrength_ = GetShaderLocation(worldShader, "uSonarStrength");
 
     locResolution_ = GetShaderLocation(postShader, "uResolution");
     locBloomStrength_ = GetShaderLocation(postShader, "uBloomStrength");
@@ -130,6 +158,20 @@ void ShaderPipeline::init(int width, int height) {
     sceneTarget_ = LoadRenderTexture(width, height);
     SetTextureFilter(sceneTarget_.texture, TEXTURE_FILTER_BILINEAR);
     initialized = true;
+
+    setMaterialType(WorldMaterialType::Default);
+    setEmissiveStrength(0.0f);
+    updateDynamicLights(
+        {0.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f},
+        0.0f,
+        {0.0f, 0.0f, 0.0f},
+        {0.2f, 0.9f, 1.0f},
+        0.0f,
+        {0.0f, 0.0f, 0.0f},
+        0.0f,
+        0.0f
+    );
 }
 
 void ShaderPipeline::shutdown() {
@@ -158,7 +200,8 @@ void ShaderPipeline::updateWorldUniforms(
     const Vec3& skyAmbient,
     const Vec3& groundAmbient,
     const Vec3& fogColor,
-    float fogDensity
+    float fogDensity,
+    float simTime
 ) {
     if (!initialized) return;
     float vPos[3] = {cameraPos.x, cameraPos.y, cameraPos.z};
@@ -175,11 +218,51 @@ void ShaderPipeline::updateWorldUniforms(
     SetShaderValue(worldShader, locGroundAmbient_, grdA, SHADER_UNIFORM_VEC3);
     SetShaderValue(worldShader, locFogColor_, fCol, SHADER_UNIFORM_VEC3);
     SetShaderValue(worldShader, locFogDensity_, &fogDensity, SHADER_UNIFORM_FLOAT);
+    if (locTime_ >= 0) {
+        SetShaderValue(worldShader, locTime_, &simTime, SHADER_UNIFORM_FLOAT);
+    }
+}
+
+void ShaderPipeline::updateDynamicLights(
+    const Vec3& searchlightPos,
+    const Vec3& searchlightDir,
+    float searchlightActive,
+    const Vec3& bossLightPos,
+    const Vec3& bossLightColor,
+    float bossLightIntensity,
+    const Vec3& sonarOrigin,
+    float sonarRadius,
+    float sonarStrength
+) {
+    if (!initialized) return;
+    float slPos[3] = {searchlightPos.x, searchlightPos.y, searchlightPos.z};
+    float slDir[3] = {searchlightDir.x, searchlightDir.y, searchlightDir.z};
+    float blPos[3] = {bossLightPos.x, bossLightPos.y, bossLightPos.z};
+    float blCol[3] = {bossLightColor.x, bossLightColor.y, bossLightColor.z};
+    float snPos[3] = {sonarOrigin.x, sonarOrigin.y, sonarOrigin.z};
+
+    if (locSearchlightPos_ >= 0) SetShaderValue(worldShader, locSearchlightPos_, slPos, SHADER_UNIFORM_VEC3);
+    if (locSearchlightDir_ >= 0) SetShaderValue(worldShader, locSearchlightDir_, slDir, SHADER_UNIFORM_VEC3);
+    if (locSearchlightActive_ >= 0) SetShaderValue(worldShader, locSearchlightActive_, &searchlightActive, SHADER_UNIFORM_FLOAT);
+
+    if (locBossLightPos_ >= 0) SetShaderValue(worldShader, locBossLightPos_, blPos, SHADER_UNIFORM_VEC3);
+    if (locBossLightColor_ >= 0) SetShaderValue(worldShader, locBossLightColor_, blCol, SHADER_UNIFORM_VEC3);
+    if (locBossLightIntensity_ >= 0) SetShaderValue(worldShader, locBossLightIntensity_, &bossLightIntensity, SHADER_UNIFORM_FLOAT);
+
+    if (locSonarOrigin_ >= 0) SetShaderValue(worldShader, locSonarOrigin_, snPos, SHADER_UNIFORM_VEC3);
+    if (locSonarRadius_ >= 0) SetShaderValue(worldShader, locSonarRadius_, &sonarRadius, SHADER_UNIFORM_FLOAT);
+    if (locSonarStrength_ >= 0) SetShaderValue(worldShader, locSonarStrength_, &sonarStrength, SHADER_UNIFORM_FLOAT);
 }
 
 void ShaderPipeline::setEmissiveStrength(float strength) {
     if (!initialized) return;
     SetShaderValue(worldShader, locEmissive_, &strength, SHADER_UNIFORM_FLOAT);
+}
+
+void ShaderPipeline::setMaterialType(WorldMaterialType matType) {
+    if (!initialized || locMaterialType_ < 0) return;
+    int val = static_cast<int>(matType);
+    SetShaderValue(worldShader, locMaterialType_, &val, SHADER_UNIFORM_INT);
 }
 
 void ShaderPipeline::beginScenePass() {
@@ -190,7 +273,7 @@ void ShaderPipeline::endSceneAndDrawPostProcess(int screenW, int screenH, bool e
     EndTextureMode();
 
     float res[2] = {static_cast<float>(screenW), static_cast<float>(screenH)};
-    float bloom = enableBloom ? 1.15f : 0.0f;
+    float bloom = enableBloom ? 1.18f : 0.0f;
     SetShaderValue(postShader, locResolution_, res, SHADER_UNIFORM_VEC2);
     SetShaderValue(postShader, locBloomStrength_, &bloom, SHADER_UNIFORM_FLOAT);
     SetShaderValue(postShader, locStormFlash_, &stormFlash, SHADER_UNIFORM_FLOAT);

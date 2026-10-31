@@ -21,7 +21,8 @@ enum class LeviathanState {
     StalkingOrbit,
     BreachCharge,
     ArtilleryBarrage,
-    TetherStruggle
+    TetherStruggle,
+    StaggeredExposed
 };
 
 struct LeviathanSegment {
@@ -57,6 +58,8 @@ public:
     LeviathanSpecies species() const { return species_; }
     const std::string& name() const { return name_; }
     const std::string& title() const { return title_; }
+    const std::string& signatureMechanicName() const { return signatureMechanicName_; }
+    const std::string& counterplayHint() const { return counterplayHint_; }
 
     void update(
         float dt,
@@ -65,6 +68,9 @@ public:
         int activeTetherCount,
         std::vector<LeviathanAttackBolt>& outAttacks
     );
+
+    // Trigger species-specific tactical counterplay disruption (Sonar, Searchlight, EMP, Tether Reel, Thermal)
+    bool triggerCounterplayDisruption(const char* sourceReason);
 
     // Apply damage to a specific segment; returns actual damage dealt to total HP
     float damageSegment(int segmentIdx, float rawDamage, bool isHarpoonHit);
@@ -83,6 +89,13 @@ public:
     float stateTimer = 8.0f;
     float attackCooldown = 3.0f;
     float jawAngle = 0.0f;
+
+    // Boss Puzzle Barrier & Resonance Stagger state
+    bool barrierActive = false;
+    float barrierCycleTimer = 9.0f;
+    float staggeredWindowTimer = 0.0f;
+    int timesDisrupted = 0;
+
     int goldBounty = 450;
     int aetherBounty = 18;
     ColorRGB bodyColor{45, 115, 185};
@@ -94,6 +107,8 @@ private:
     LeviathanSpecies species_;
     std::string name_;
     std::string title_;
+    std::string signatureMechanicName_;
+    std::string counterplayHint_;
     Rng32 rng_;
 };
 

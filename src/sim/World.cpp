@@ -1,5 +1,6 @@
 #include "sim/World.h"
 #include <cmath>
+#include <ctime>
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -423,9 +424,54 @@ bool World::triggerSonarPing() {
     sonarWaveRadius = 8.0f;
     sonarWaveOrigin = playerShip.position;
 
-    pendingAudioEvents.push_back({SimAudioEventType::TeslaDischarge, playerShip.position, 1.1f});
+    // Trigger Boss Puzzle Counterplay on Azure Sky-Whale, Obsidian Dread-Manta, or tethered Maelstrom Sovereign!
+    int disruptedCount = 0;
+    for (auto& lev : leviathans) {
+        if (lev.isSlain || lev.segments.empty()) continue;
+        float dist = (lev.segments[0].position - playerShip.position).length();
+        if (dist <= 520.0f) {
+            if (lev.species() == LeviathanSpecies::AzureSkyWhale ||
+                lev.species() == LeviathanSpecies::ObsidianDreadManta ||
+                (lev.species() == LeviathanSpecies::MaelstromSovereign && lev.aiState == LeviathanState::TetherStruggle)) {
+                if (lev.triggerCounterplayDisruption("ACOUSTIC SONAR RESONANCE")) {
+                    disruptedCount++;
+                    callouts.push_back({
+                        lev.segments[0].position + Vec3{0.0f, 14.0f, 0.0f},
+                        lev.signatureMechanicName() + " SHATTERED! CORE EXPOSED (8.5s)!",
+                        {85, 255, 215},
+                        2.8f,
+                        2.8f
+                    });
+                }
+            }
+        }
+    }
+
+    // Also reveal any nearby Sky-Wonders or Lore Logs within 340m!
+    for (auto& w : skyWonders) {
+        if (!w.discovered && (w.position - playerShip.position).length() <= 340.0f) {
+            w.discovered = true;
+            playerGold += 180;
+            playerAether += 8;
+            callouts.push_back({w.position + Vec3{0.0f, 16.0f, 0.0f}, "WONDER CHARTED: " + w.name + "! (+180G +8Ae)", {255, 230, 95}, 3.0f, 3.0f});
+        }
+    }
+    for (auto& log : loreLogs) {
+        if (!log.recovered && (log.position - playerShip.position).length() <= 340.0f) {
+            log.recovered = true;
+            playerGold += 90;
+            playerAether += 4;
+            callouts.push_back({log.position + Vec3{0.0f, 10.0f, 0.0f}, "LORE LOG RECOVERED: " + log.title + " (+90G +4Ae)", {135, 240, 255}, 2.8f, 2.8f});
+        }
+    }
+
+    pendingAudioEvents.push_back({SimAudioEventType::TeslaDischarge, playerShip.position, 1.15f});
     callouts.push_back({playerShip.position + Vec3{0.0f, 9.0f, 0.0f}, "AETHER SONAR PING! (+25% TARGET DAMAGE)", {95, 235, 255}, 2.2f, 2.2f});
-    statusBannerText = "Acoustic Aether-Sonar Emitted! All Leviathan Weak Cores Exposed (+25% Crit Damage for 10s)!";
+    if (disruptedCount > 0) {
+        statusBannerText = "ACOUSTIC SONAR COUNTERPLAY! Shattered Elder Leviathan Barrier — Weak Cores Exposed for 8.5s!";
+    } else {
+        statusBannerText = "Acoustic Aether-Sonar Emitted! All Leviathan Weak Cores Exposed (+25% Crit Damage for 10s)!";
+    }
     statusBannerTimer = 4.5f;
     return true;
 }
@@ -504,25 +550,41 @@ bool World::triggerEmpNova() {
         }
     }
 
-    // 2. Deal armor-piercing resonance damage to Colossal Sky-Leviathans within 195m
+    // 2. Deal armor-piercing resonance damage & trigger EMP Counterplay on Colossal Sky-Leviathans within 225m
     for (auto& lev : leviathans) {
         if (lev.isSlain) continue;
         for (size_t s = 0; s < lev.segments.size(); ++s) {
             float d = (lev.segments[s].position - playerShip.position).length();
-            if (d <= kEmpRadius) {
+            if (d <= 225.0f) {
                 hits++;
+                if (lev.species() == LeviathanSpecies::CrimsonStormWyrm ||
+                    lev.species() == LeviathanSpecies::SolarPhoenixSerpent ||
+                    lev.species() == LeviathanSpecies::MaelstromSovereign) {
+                    if (lev.triggerCounterplayDisruption("EMP NOVA OVERLOAD")) {
+                        callouts.push_back({
+                            lev.segments[0].position + Vec3{0.0f, 14.0f, 0.0f},
+                            lev.signatureMechanicName() + " COLLAPSED! STAGGERED (8.5s)!",
+                            {255, 215, 75},
+                            2.8f,
+                            2.8f
+                        });
+                    }
+                }
                 lev.damageSegment(static_cast<int>(s), empDmg * 1.15f, true);
                 explosions.push_back({lev.segments[s].position, 7.0f, {215, 115, 255}, false, true, playerShip.position});
                 callouts.push_back({lev.segments[s].position + Vec3{0.0f, 7.0f, 0.0f}, "EMP RESONANCE! -" + std::to_string(static_cast<int>(empDmg * 1.15f)), {215, 125, 255}, 1.8f, 1.8f});
                 if (lev.isSlain) {
                     leviathansSlain++;
-                    int goldReward = static_cast<int>(static_cast<float>(lev.goldBounty) * navRewardMult);
-                    int aethReward = static_cast<int>(static_cast<float>(lev.aetherBounty) * navRewardMult);
+                    int goldReward = static_cast<int>(static_cast<float>(lev.goldBounty) * navRewardMult * getRiskBountyMultiplier());
+                    int aethReward = static_cast<int>(static_cast<float>(lev.aetherBounty) * navRewardMult * getRiskBountyMultiplier());
                     playerGold += goldReward;
                     playerAether += aethReward;
                     playerCargo[3] = std::min(maxCargoCapacity(), playerCargo[3] + 2);
                     for (auto& c : contracts) {
                         if (c.targetName == lev.name()) c.completed = true;
+                    }
+                    if (lev.species() == LeviathanSpecies::MaelstromSovereign) {
+                        victoryAchieved = true;
                     }
                 }
                 break; // Hit once per Leviathan per Nova
@@ -928,15 +990,15 @@ void World::initWorld(uint64_t seed, int playerBlueprintIdx, bool sandboxMode) {
 
     archipelago.generate(seed);
 
-    // Initialize Player Flagship moored off New Horizon Drydock's northern sky-pier
+    // Initialize Player Flagship moored off New Horizon Drydock's sky-pier approach
     ShipBlueprints::applyBlueprint(playerShip, playerBlueprintIdx);
     applyCrewMultipliers();
-    playerShip.position = {0.0f, 134.0f, -128.0f};
-    playerShip.velocity = {0.0f, 0.0f, -8.0f};
+    playerShip.position = {0.0f, 138.0f, -62.0f};
+    playerShip.velocity = {0.0f, 0.0f, -6.0f};
     playerShip.yaw = 0.0f;
     playerShip.pitch = 0.0f;
     playerShip.roll = 0.0f;
-    playerShip.targetCruiseAltitude = 134.0f;
+    playerShip.targetCruiseAltitude = 138.0f;
     playerShip.shieldHp = playerShip.maxShieldHp;
     playerShip.afterburnerFuel = playerShip.maxAfterburnerFuel;
     playerShip.isDestroyed = false;
@@ -980,6 +1042,11 @@ void World::initWorld(uint64_t seed, int playerBlueprintIdx, bool sandboxMode) {
     contracts.push_back({4, "Shatter the Glacial Cryo-Kraken", "Architeuthis Borealis", {240.0f, 162.0f, -720.0f}, 1250, 45, false});
     contracts.push_back({5, "Extinguish the Solar Phoenix-Serpent", "Ignis Quetzal", {-420.0f, 148.0f, 310.0f}, 1500, 55, false});
     contracts.push_back({6, "Conquer the Maelstrom Sovereign", "Apex Charybdis", {0.0f, 155.0f, -1080.0f}, 1800, 65, false});
+
+    voyageElapsedSeconds = 0.0f;
+    victoryAchieved = false;
+    playerSearchlightOn = true;
+    initSkyEcosystemAndWonders();
 }
 
 void World::spawnImperialConvoy() {
@@ -1246,6 +1313,8 @@ void World::step(float dt) {
     }
 
     archipelago.update(dt);
+    voyageElapsedSeconds += dt;
+    stepSkyEcosystemAndWonders(dt);
 
     // 1. Player Autopilot (if enabled)
     if (playerAutopilot && !playerShip.isDestroyed) {
@@ -2543,6 +2612,423 @@ void World::stepDebrisAndCrates(float dt) {
         std::remove_if(callouts.begin(), callouts.end(), [](const CombatCallout3D& c) { return c.lifetime <= 0.0f; }),
         callouts.end()
     );
+}
+
+void World::togglePlayerSearchlight() {
+    playerSearchlightOn = !playerSearchlightOn;
+    pendingAudioEvents.push_back({SimAudioEventType::RepairPulse, playerShip.position, 0.75f});
+    statusBannerText = std::string("BOW AETHER-SEARCHLIGHT [L]: ") + (playerSearchlightOn ? "ENGAGED (Illuminates Darkness & Burns Umbra Cloaks)" : "EXTINGUISHED (Stealth Running)");
+    statusBannerTimer = 3.2f;
+}
+
+void World::emergencyRefloatPlayerShip() {
+    Vec3 harborPos = !archipelago.islands.empty()
+        ? (archipelago.islands[0].position + Vec3{0.0f, 34.0f, -128.0f})
+        : Vec3{0.0f, 134.0f, -128.0f};
+    playerShip.position = harborPos;
+    playerShip.velocity = {0.0f, 0.0f, 0.0f};
+    playerShip.angularVelYaw = 0.0f;
+    playerShip.pitch = 0.0f;
+    playerShip.roll = 0.0f;
+    playerShip.targetCruiseAltitude = harborPos.y;
+    playerShip.isDestroyed = false;
+    playerShip.isSinking = false;
+    playerShip.triggerEmergencyRepair(9999.0f);
+    playerShip.shieldHp = playerShip.maxShieldHp;
+    playerShip.afterburnerFuel = playerShip.maxAfterburnerFuel;
+    releaseAllPlayerHarpoons();
+    pendingAudioEvents.push_back({SimAudioEventType::RepairPulse, harborPos, 1.4f});
+    statusBannerText = "EMERGENCY SALVAGE TOW COMPLETE: Flagship refloated and repaired at New Horizon Sky-Pier!";
+    statusBannerTimer = 4.5f;
+}
+
+void World::startDailySkyVoyage() {
+    std::time_t now = std::time(nullptr);
+    std::tm* gmt = std::gmtime(&now);
+    int year = gmt ? (gmt->tm_year + 1900) : 2026;
+    int mon  = gmt ? (gmt->tm_mon + 1) : 10;
+    int day  = gmt ? gmt->tm_mday : 30;
+    uint64_t dailySeedVal = static_cast<uint64_t>(year * 10000 + mon * 100 + day);
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, mon, day);
+    dailyDateLabel = buf;
+
+    int dailyShipIdx = static_cast<int>(dailySeedVal % 8ULL);
+    initWorld(dailySeedVal * 2654435761ULL, dailyShipIdx, false);
+    isDailyVoyage = true;
+    activeRiskContractIdx = static_cast<int>((dailySeedVal % 3ULL) + 1ULL);
+    skyAtmospherePreset = static_cast<int>(dailySeedVal % 4ULL);
+    currentWeather = static_cast<WeatherState>((dailySeedVal / 3ULL) % 4ULL);
+    statusBannerText = "DAILY SKY-VOYAGE (" + dailyDateLabel + "): Seed #" + std::to_string(dailySeedVal) +
+                       " | Charter: " + getRiskContractName(activeRiskContractIdx) + "!";
+    statusBannerTimer = 6.0f;
+}
+
+void World::cycleRiskContract() {
+    activeRiskContractIdx = (activeRiskContractIdx + 1) % 4;
+    pendingAudioEvents.push_back({SimAudioEventType::CratePickup, playerShip.position, 0.9f});
+    statusBannerText = std::string("EXPEDITION RISK CHARTER: ") + getRiskContractName(activeRiskContractIdx) +
+                       " — " + getRiskContractDesc(activeRiskContractIdx);
+    statusBannerTimer = 4.2f;
+}
+
+const char* World::getRiskContractName(int idx) {
+    switch (idx % 4) {
+        case 0: return "Standard Guild Charter (1.0x Bounty)";
+        case 1: return "Tempest Squall Charter (1.35x Bounty)";
+        case 2: return "Glass-Cannon Broadside (1.50x Bounty)";
+        case 3: return "Apex Elder Hunt Charter (1.75x Bounty)";
+    }
+    return "Standard Guild Charter";
+}
+
+const char* World::getRiskContractDesc(int idx) {
+    switch (idx % 4) {
+        case 0: return "Balanced wind currents, standard hull integrity, 1.0x Gold & Aetherium rewards.";
+        case 1: return "Turbulent Ion Squalls & +35% Gold/Aetherium bounty payouts.";
+        case 2: return "+35% Player Broadside Cannon Damage, +25% Hull Damage Taken, 1.50x Bounty.";
+        case 3: return "Elder Leviathans regenerate barriers faster, 1.75x Gold & Aetherium rewards.";
+    }
+    return "";
+}
+
+float World::getRiskBountyMultiplier() const {
+    switch (activeRiskContractIdx % 4) {
+        case 1: return 1.35f;
+        case 2: return 1.50f;
+        case 3: return 1.75f;
+        default: return 1.0f;
+    }
+}
+
+int World::discoveredWonderCount() const {
+    int c = 0;
+    for (const auto& w : skyWonders) {
+        if (w.discovered) c++;
+    }
+    return c;
+}
+
+int World::recoveredLoreLogCount() const {
+    int c = 0;
+    for (const auto& l : loreLogs) {
+        if (l.recovered) c++;
+    }
+    return c;
+}
+
+void World::initSkyEcosystemAndWonders() {
+    skyRayBoids.clear();
+    skyJellies.clear();
+    skyWonders.clear();
+    loreLogs.clear();
+
+    // 1. Spawn 36 Cohesive 3D Sky-Ray Boids in 3 Flocks across the Archipelago
+    const Vec3 flockCenters[3] = {
+        {95.0f, 152.0f, -210.0f},
+        {-210.0f, 158.0f, -140.0f},
+        {260.0f, 148.0f, 185.0f}
+    };
+    const ColorRGB flockColors[3] = {
+        {75, 210, 245},
+        {135, 185, 255},
+        {245, 185, 95}
+    };
+    for (int f = 0; f < 3; ++f) {
+        for (int i = 0; i < 12; ++i) {
+            SkyRayBoid b;
+            float ang = static_cast<float>(i) * (kTwoPi / 12.0f);
+            b.homeCenter = flockCenters[f];
+            b.position = flockCenters[f] + Vec3{std::cos(ang) * 28.0f, static_cast<float>(i % 4) * 4.5f, std::sin(ang) * 28.0f};
+            b.velocity = Vec3{-std::sin(ang) * 18.0f, 0.0f, std::cos(ang) * 18.0f};
+            b.wingPhase = static_cast<float>(i) * 0.65f;
+            b.scale = 2.1f + (i % 3) * 0.45f;
+            b.flockId = f;
+            b.color = flockColors[f];
+            skyRayBoids.push_back(b);
+        }
+    }
+
+    // 2. Spawn 24 Bioluminescent Aether-Medusa Jellyfish near Obelisks & Spires
+    for (int i = 0; i < 24; ++i) {
+        SkyJellyfish j;
+        Vec3 anchor = !archipelago.obelisks.empty()
+            ? archipelago.obelisks[static_cast<size_t>(i) % archipelago.obelisks.size()].position
+            : Vec3{0.0f, 140.0f, -240.0f};
+        float ang = static_cast<float>(i) * 1.15f;
+        float dist = 34.0f + static_cast<float>(i % 5) * 14.0f;
+        j.position = anchor + Vec3{std::cos(ang) * dist, 18.0f + static_cast<float>(i % 4) * 7.0f, std::sin(ang) * dist};
+        j.baseAltitude = j.position.y;
+        j.pulsePhase = static_cast<float>(i) * 0.8f;
+        j.radius = 2.2f + static_cast<float>(i % 3) * 0.65f;
+        j.bellColor = (i % 2 == 0) ? ColorRGB{95, 240, 255} : ColorRGB{215, 130, 255};
+        j.tentacleColor = (i % 2 == 0) ? ColorRGB{235, 135, 255} : ColorRGB{95, 245, 215};
+        skyJellies.push_back(j);
+    }
+
+    // 3. Populate 10 Monumental Sky-Wonders across the Archipelago
+    struct WonderTemplate {
+        const char* name;
+        const char* sub;
+        const char* lore;
+        Vec3 pos;
+        int style;
+        ColorRGB col;
+    };
+    const WonderTemplate kWonderDefs[10] = {
+        {"The Sun-Dial Colossus", "Ancient Orichalcum Horizon Ring",
+         "Built by the First Navigators to align sky-currents with the vernal equinox.",
+         {115.0f, 152.0f, -185.0f}, 0, {255, 215, 85}},
+        {"Whispering Crystal Arch", "Harmonic Aetherium Natural Bridge",
+         "Wind passing through its hollow quartz pillars hums in a perfect C-minor chord.",
+         {-175.0f, 148.0f, -245.0f}, 1, {85, 245, 255}},
+        {"Titan's Anchor Chains", "Relic of the Sunken Continent",
+         "Three cyclopean iron links suspended by anti-gravity lodestones above the abyss.",
+         {295.0f, 144.0f, -95.0f}, 2, {255, 155, 75}},
+        {"Astrolabe of Vael", "Celestial Gyro-Sanctuary",
+         "Concentric brass rings that still track the migration of Elder Sky-Leviathans.",
+         {-290.0f, 160.0f, 110.0f}, 3, {215, 135, 255}},
+        {"Sunken Cathedral of Orias", "Ruined Cloud-Spire Basilica",
+         "Its stained-glass rose window was shattered when Cetus Aetheria first breached.",
+         {65.0f, 156.0f, 275.0f}, 0, {115, 235, 255}},
+        {"Emerald Cascade Sanctuary", "Hanging Waterfall Atoll",
+         "Meltwater from high-altitude ice clouds feeds an eternal mist waterfall.",
+         {-95.0f, 142.0f, -445.0f}, 1, {95, 255, 175}},
+        {"Boreal Leviathan Graveyard", "Fossilized Sky-Whale Ribs",
+         "Where ancient sky-whales drift when their internal Aether-bladders finally cool.",
+         {215.0f, 164.0f, -590.0f}, 2, {155, 235, 255}},
+        {"Crown of the Storm-King", "Fulmen Fulmination Spire",
+         "Perpetually struck by upward-forking lightning from the lower cloud sea.",
+         {-355.0f, 158.0f, -310.0f}, 3, {255, 195, 75}},
+        {"Observatory of the First Fleet", "brass-Domed Star Chart",
+         "Contains the original copper plates charting the Maelstrom at the rim of the world.",
+         {410.0f, 146.0f, 220.0f}, 0, {255, 225, 115}},
+        {"The Singing Monolith", "Apex Resonance Pillar",
+         "A black basalt needle whose vibrations calm nearby storm squalls.",
+         {0.0f, 165.0f, -860.0f}, 1, {255, 95, 155}}
+    };
+    for (int i = 0; i < 10; ++i) {
+        SkyWonder w;
+        w.id = i + 1;
+        w.name = kWonderDefs[i].name;
+        w.subtitle = kWonderDefs[i].sub;
+        w.loreText = kWonderDefs[i].lore;
+        w.position = kWonderDefs[i].pos;
+        w.styleVariant = kWonderDefs[i].style;
+        w.accentColor = kWonderDefs[i].col;
+        w.discovered = false;
+        skyWonders.push_back(w);
+    }
+
+    // 4. Populate 12 Recoverable Expedition Lore Logs
+    struct LogTemplate {
+        const char* title;
+        const char* author;
+        const char* excerpt;
+        Vec3 pos;
+    };
+    const LogTemplate kLogDefs[12] = {
+        {"Log I: The Great Upwelling", "Grand Admiral Alistair Vance",
+         "When the terrestrial seas boiled into the firmament, only vessels fitted with Aetherium lift-bladders survived the ascent.",
+         {52.0f, 138.0f, -155.0f}},
+        {"Log II: Anatomy of Cetus Aetheria", "Chief Naturalist Lyra",
+         "The Azure Sky-Whale weaves a harmonic song-shell around its flanks. Only an Acoustic Sonar pulse or harpoon barb can fracture the harmony.",
+         {145.0f, 144.0f, -275.0f}},
+        {"Log III: Fulmen's Static Fury", "Captain Kaelen of the Iron Sparrow",
+         "Do not fire broadsides blind into the Crimson Wyrm's static shroud! Ground it with twin harpoon cables or an EMP Nova first.",
+         {-245.0f, 148.0f, -345.0f}},
+        {"Log IV: Shadows in the Cirrus", "Lookout Officer Sera",
+         "Raja Vorago drinks the sunlight itself. Keep the Bow Searchlight [L] trained on its wings to burn away its Abyssal Umbra Cloak!",
+         {430.0f, 132.0f, 245.0f}},
+        {"Log V: The Boreal Permafrost", "Master Gunner Torin",
+         "The Cryo-Kraken's ice carapace deflects light shot. Lure it near a thermal updraft geyser or drop a Sky-Mine [X] in its wake!",
+         {215.0f, 158.0f, -660.0f}},
+        {"Log VI: Quetzal's Solar Vents", "Engineer Lin",
+         "Ignis Quetzal vents superheated plasma through its tail segments. Aim for the rear exhaust vents to quench its Corona Mantle!",
+         {-385.0f, 150.0f, 275.0f}},
+        {"Log VII: The Maelstrom Sovereign", "Last Transmission of the Vanguard",
+         "Apex Charybdis anchors the storm at Z=-1080. Only a multi-tethered harpoon reel combined with Sonar or EMP can collapse its Vortex Aegis.",
+         {-35.0f, 154.0f, -940.0f}},
+        {"Log VIII: Orichalcum Overclocking", "Master Shipwright Orin",
+         "By infusing refined Aetherium directly into timber and iron ribs, a single frigate can withstand the jaw-crush of an Elder Leviathan.",
+         {-115.0f, 138.0f, -125.0f}},
+        {"Log IX: The Singing Obelisks", "Scholar-Navigator Lyra",
+         "Six monoliths form a protective ward across the archipelago. Attuning all six awakens the Astral Convergence shield.",
+         {190.0f, 142.0f, 85.0f}},
+        {"Log X: Corsair Dread-Arks", "Commodore Helena",
+         "Renegade sky-pirates have lashed three dreadnought hulls together into a floating fortress. Strike their outer turbines to cripple their turn rate.",
+         {-205.0f, 136.0f, 175.0f}},
+        {"Log XI: Star-Aether Meteoroids", "Astronomer Vael",
+         "Falling star-shards hover at the buoyancy equilibrium layer before dissolving. Tractor-grapplers can harvest their pure Aether cores.",
+         {290.0f, 155.0f, -280.0f}},
+        {"Log XII: New Horizon Covenant", "Council of Sky-Captains",
+         "So long as the Drydock beacons burn at Haven Harbor, no storm shall claim the last children of the sky.",
+         {0.0f, 142.0f, -95.0f}}
+    };
+    for (int i = 0; i < 12; ++i) {
+        LoreLogEntry l;
+        l.id = i + 1;
+        l.title = kLogDefs[i].title;
+        l.author = kLogDefs[i].author;
+        l.excerpt = kLogDefs[i].excerpt;
+        l.position = kLogDefs[i].pos;
+        l.recovered = false;
+        loreLogs.push_back(l);
+    }
+}
+
+void World::stepSkyEcosystemAndWonders(float dt) {
+    // 1. Step 3D Sky-Ray Boid Flocks
+    for (size_t i = 0; i < skyRayBoids.size(); ++i) {
+        SkyRayBoid& b = skyRayBoids[i];
+        b.wingPhase += dt * 4.6f;
+
+        Vec3 sep{0.0f, 0.0f, 0.0f};
+        Vec3 ali{0.0f, 0.0f, 0.0f};
+        Vec3 coh{0.0f, 0.0f, 0.0f};
+        int neighbors = 0;
+
+        for (size_t j = 0; j < skyRayBoids.size(); ++j) {
+            if (i == j || skyRayBoids[j].flockId != b.flockId) continue;
+            Vec3 diff = b.position - skyRayBoids[j].position;
+            float d = diff.length();
+            if (d < 42.0f && d > 0.01f) {
+                neighbors++;
+                ali += skyRayBoids[j].velocity;
+                coh += skyRayBoids[j].position;
+                if (d < 11.0f) {
+                    sep += diff / d;
+                }
+            }
+        }
+
+        Vec3 steer{0.0f, 0.0f, 0.0f};
+        if (neighbors > 0) {
+            float invN = 1.0f / static_cast<float>(neighbors);
+            ali = (ali * invN).normalized() * 20.0f;
+            Vec3 center = coh * invN;
+            Vec3 toCenter = (center - b.position).normalized() * 18.0f;
+            steer += (ali - b.velocity) * 0.8f + (toCenter - b.velocity) * 0.6f + sep * 14.0f;
+        }
+
+        // Gentle orbit around homeCenter
+        Vec3 toHome = b.homeCenter - b.position;
+        Vec3 tangent{-toHome.z, 0.0f, toHome.x};
+        steer += toHome * 0.18f + tangent.normalized() * 8.0f;
+        steer.y += (b.homeCenter.y + std::sin(b.wingPhase * 0.35f) * 8.0f - b.position.y) * 0.8f;
+
+        b.velocity += steer * dt;
+        float spd = b.velocity.length();
+        if (spd > 24.0f) b.velocity = (b.velocity / spd) * 24.0f;
+        else if (spd < 11.0f) b.velocity = b.velocity.normalized() * 11.0f;
+
+        b.position += b.velocity * dt;
+    }
+
+    // 2. Step Bioluminescent Aether-Medusae
+    for (auto& j : skyJellies) {
+        j.pulsePhase += dt * 2.2f;
+        j.position.y = j.baseAltitude + std::sin(j.pulsePhase) * 3.2f;
+    }
+
+    if (playerShip.isDestroyed) return;
+
+    Vec3 shipFwd = playerShip.orientationQuat().forward();
+
+    // 3. Bow Searchlight Counterplay on Obsidian Dread-Manta & Thermal Geyser Counterplay on Cryo-Kraken
+    for (auto& lev : leviathans) {
+        if (lev.isSlain || lev.segments.empty()) continue;
+
+        // Bow Searchlight burns away Raja Vorago's Abyssal Umbra Cloak!
+        if (playerSearchlightOn && lev.species() == LeviathanSpecies::ObsidianDreadManta && lev.barrierActive) {
+            Vec3 toBoss = lev.segments[0].position - playerShip.position;
+            float dist = toBoss.length();
+            if (dist < 360.0f && dist > 1.0f) {
+                float coneDot = Vec3::dot(toBoss / dist, shipFwd);
+                if (coneDot > 0.78f) {
+                    if (lev.triggerCounterplayDisruption("BOW SEARCHLIGHT ILLUMINATION")) {
+                        pendingAudioEvents.push_back({SimAudioEventType::TeslaDischarge, lev.segments[0].position, 1.2f});
+                        callouts.push_back({
+                            lev.segments[0].position + Vec3{0.0f, 14.0f, 0.0f},
+                            "SEARCHLIGHT BURNED UMBRA CLOAK! CORE EXPOSED (8.5s)!",
+                            {255, 235, 95},
+                            2.8f,
+                            2.8f
+                        });
+                        statusBannerText = "BOW SEARCHLIGHT COUNTERPLAY! Raja Vorago's Abyssal Umbra Cloak burned away — Weak Cores Exposed!";
+                        statusBannerTimer = 4.5f;
+                    }
+                }
+            }
+        }
+
+        // Thermal Updraft Geyser cracks Glacial Cryo-Kraken's Permafrost Carapace!
+        if (lev.species() == LeviathanSpecies::GlacialCryoKraken && lev.barrierActive) {
+            for (const auto& gey : archipelago.updrafts) {
+                float dx = lev.segments[0].position.x - gey.basePosition.x;
+                float dz = lev.segments[0].position.z - gey.basePosition.z;
+                if (dx * dx + dz * dz <= (gey.radius + 45.0f) * (gey.radius + 45.0f)) {
+                    if (lev.triggerCounterplayDisruption("THERMAL GEYSER MELTDOWN")) {
+                        callouts.push_back({
+                            lev.segments[0].position + Vec3{0.0f, 14.0f, 0.0f},
+                            "THERMAL GEYSER SHATTERED PERMAFROST CARAPACE!",
+                            {255, 195, 75},
+                            2.8f,
+                            2.8f
+                        });
+                        statusBannerText = "THERMAL COUNTERPLAY! Superheated updraft shattered the Cryo-Kraken's Permafrost Carapace!";
+                        statusBannerTimer = 4.5f;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // 4. Proximity & Searchlight Discovery of 10 Sky-Wonders & 12 Expedition Lore Logs
+    for (auto& w : skyWonders) {
+        if (w.discovered) continue;
+        Vec3 toW = w.position - playerShip.position;
+        float d = toW.length();
+        bool inBeam = playerSearchlightOn && d < 280.0f && d > 1.0f && Vec3::dot(toW / d, shipFwd) > 0.85f;
+        if (d <= 165.0f || inBeam) {
+            w.discovered = true;
+            playerGold += 180;
+            playerAether += 8;
+            pendingAudioEvents.push_back({SimAudioEventType::RepairPulse, w.position, 1.3f});
+            callouts.push_back({
+                w.position + Vec3{0.0f, 16.0f, 0.0f},
+                "SKY-WONDER DISCOVERED: " + w.name + " (+180G +8Ae)",
+                {255, 225, 85},
+                3.2f,
+                3.2f
+            });
+            statusBannerText = "SKY-WONDER CHARTED [" + std::to_string(discoveredWonderCount()) + "/10]: " +
+                               w.name + " — " + w.loreText + " (+180G, +8 Ae)";
+            statusBannerTimer = 5.5f;
+        }
+    }
+
+    for (auto& log : loreLogs) {
+        if (log.recovered) continue;
+        float d = (log.position - playerShip.position).length();
+        if (d <= 145.0f) {
+            log.recovered = true;
+            playerGold += 90;
+            playerAether += 4;
+            pendingAudioEvents.push_back({SimAudioEventType::CratePickup, log.position, 1.2f});
+            callouts.push_back({
+                log.position + Vec3{0.0f, 10.0f, 0.0f},
+                "EXPEDITION LOG [" + std::to_string(recoveredLoreLogCount()) + "/12]: " + log.title,
+                {125, 240, 255},
+                3.0f,
+                3.0f
+            });
+            statusBannerText = "RECOVERED ARMADA LOG [" + std::to_string(recoveredLoreLogCount()) + "/12] " +
+                               log.title + ": \"" + log.excerpt + "\"";
+            statusBannerTimer = 5.5f;
+        }
+    }
 }
 
 } // namespace aethernaut

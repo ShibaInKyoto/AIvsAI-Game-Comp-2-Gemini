@@ -25,36 +25,37 @@ void main() {
 
     vec4 base = texture(texture0, uv);
 
-    // 9-tap wide neighborhood bloom extraction for bright highlights
+    // 12-tap dual-ring bloom extraction for soft atmospheric halation
     vec3 bloomSum = vec3(0.0);
-    const vec2 offsets[8] = vec2[](
-        vec2(-2.5, -2.5), vec2(2.5, -2.5),
-        vec2(-2.5,  2.5), vec2(2.5,  2.5),
-        vec2(-4.5,  0.0), vec2(4.5,  0.0),
-        vec2( 0.0, -4.5), vec2(0.0,  4.5)
+    const vec2 offsets[12] = vec2[](
+        vec2(-2.0, -2.0), vec2(2.0, -2.0),
+        vec2(-2.0,  2.0), vec2(2.0,  2.0),
+        vec2(-4.0,  0.0), vec2(4.0,  0.0),
+        vec2( 0.0, -4.0), vec2(0.0,  4.0),
+        vec2(-6.5, -3.5), vec2(6.5, -3.5),
+        vec2(-3.5,  6.5), vec2(3.5,  6.5)
     );
 
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 12; ++i) {
         vec3 s = texture(texture0, uv + offsets[i] * texel).rgb;
         float lum = dot(s, vec3(0.2126, 0.7152, 0.0722));
-        if (lum > 0.68) {
-            bloomSum += (s - vec3(0.60)) * 1.4;
-        }
+        float softKnee = smoothstep(0.62, 1.15, lum);
+        bloomSum += max(vec3(0.0), s - vec3(0.55)) * (softKnee * 1.28);
     }
-    bloomSum *= 0.125 * uBloomStrength;
+    bloomSum *= (1.0 / 12.0) * uBloomStrength;
 
     vec3 color = base.rgb + bloomSum;
 
-    // Storm lightning flash boost
-    color += vec3(0.55, 0.75, 1.0) * (uStormFlash * 0.25);
+    // Storm lightning flash boost (clamped by accessibility setting in C++)
+    color += vec3(0.55, 0.78, 1.0) * (uStormFlash * 0.24);
 
-    // Subtle cinematic vignette
+    // Subtle cinematic brass-spyglass vignette
     vec2 centered = uv * 2.0 - 1.0;
-    float vig = 1.0 - dot(centered, centered) * 0.14;
-    color *= clamp(vig, 0.72, 1.0);
+    float vig = 1.0 - dot(centered, centered) * 0.11;
+    color *= clamp(vig, 0.78, 1.0);
 
-    // ACES filmic tone curve + slight gamma polish
-    color = acesToneMap(color * 1.08);
+    // ACES filmic tone curve + crisp contrast polish
+    color = acesToneMap(color * 1.10);
 
     finalColor = vec4(color, 1.0);
 }

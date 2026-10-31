@@ -1,8 +1,12 @@
 #include "ui/DrydockEditor.h"
+#include "ui/HudRenderer.h"
 #include "sim/ShipBlueprints.h"
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
+
+#define DrawText(...) HudRenderer::drawTextAA(__VA_ARGS__)
+#define MeasureText(...) HudRenderer::measureTextAA(__VA_ARGS__)
 
 namespace aethernaut {
 
@@ -166,9 +170,9 @@ void DrydockEditor::drawUI(World& world, int screenW, int screenH, bool& outExit
     // 12 Blueprint Preset Buttons arranged in 2 rows of 6 on Top Right
     int bpCount = ShipBlueprints::count();
     int cols = 6;
-    int btnW = 114;
+    int btnW = 134;
     int btnH = 23;
-    int gridStartX = screenW - (cols * (btnW + 4)) - 128;
+    int gridStartX = screenW - (cols * (btnW + 4)) - 132;
     for (int i = 0; i < bpCount; ++i) {
         int row = i / cols;
         int col = i % cols;

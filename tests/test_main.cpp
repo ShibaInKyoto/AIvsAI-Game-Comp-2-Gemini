@@ -362,6 +362,66 @@ int testHeadlessWorldCombatAndTethers() {
     return 0;
 }
 
+int testElderBossCounterplaySkyEcosystemWondersAndDailyVoyage() {
+    World world;
+    world.initWorld(20261031ULL, 1, false);
+
+    // 1. Verify Sky-Ecosystem Boids, Jellyfish, 10 Sky-Wonders, and 12 Lore Logs initialize
+    ASSERT_TRUE(world.skyRayBoids.size() == 36, "World initializes 36 cohesive 3D Sky-Ray Boids");
+    ASSERT_TRUE(world.skyJellies.size() == 24, "World initializes 24 Bioluminescent Aether-Medusa Jellyfish");
+    ASSERT_TRUE(world.skyWonders.size() == 10, "World initializes 10 Monumental Sky-Wonders");
+    ASSERT_TRUE(world.loreLogs.size() == 12, "World initializes 12 First Armada Expedition Lore Logs");
+
+    // 2. Verify Bow Searchlight toggle & Obsidian Dread-Manta Umbra Cloak counterplay
+    ASSERT_TRUE(world.playerSearchlightOn, "Player searchlight starts ON by default");
+    world.togglePlayerSearchlight();
+    ASSERT_TRUE(!world.playerSearchlightOn, "togglePlayerSearchlight turns searchlight OFF");
+    world.togglePlayerSearchlight();
+    ASSERT_TRUE(world.playerSearchlightOn, "togglePlayerSearchlight turns searchlight back ON");
+
+    // 3. Verify Elder Leviathan signature mechanics & counterplay disruption across species
+    for (auto& lev : world.leviathans) {
+        ASSERT_TRUE(!lev.signatureMechanicName().empty(),
+                    "Every Leviathan has a non-empty signatureMechanicName");
+        ASSERT_TRUE(!lev.counterplayHint().empty(),
+                    "Every Leviathan has a non-empty counterplayHint");
+        lev.barrierActive = true;
+        lev.staggeredWindowTimer = 0.0f;
+        ASSERT_TRUE(lev.triggerCounterplayDisruption("Test Counterplay"), "triggerCounterplayDisruption shatters active barrier");
+        ASSERT_TRUE(!lev.barrierActive, "Barrier is deactivated after counterplay disruption");
+        ASSERT_TRUE(lev.staggeredWindowTimer >= 7.0f, "Staggered exposure window opened");
+        ASSERT_TRUE(lev.aiState == LeviathanState::StaggeredExposed, "Leviathan enters StaggeredExposed state");
+    }
+
+    // 4. Verify discovering a Monumental Sky-Wonder & First Armada Lore Log by proximity
+    world.playerShip.position = world.skyWonders[0].position;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.skyWonders[0].discovered, "Flying near Sky-Wonder #0 discovers it");
+    ASSERT_TRUE(world.discoveredWonderCount() >= 1, "discoveredWonderCount() incremented");
+
+    world.playerShip.position = world.loreLogs[0].position;
+    world.step(1.0f / 120.0f);
+    ASSERT_TRUE(world.loreLogs[0].recovered, "Flying near Lore Log #0 decodes it");
+    ASSERT_TRUE(world.recoveredLoreLogCount() >= 1, "recoveredLoreLogCount() incremented");
+
+    // 5. Verify Risk/Reward Expedition Charters & Emergency Harbor Refloat
+    ASSERT_NEAR(world.getRiskBountyMultiplier(), 1.0f, 1e-4f, "Standard Charter multiplier is 1.0x");
+    world.cycleRiskContract();
+    ASSERT_NEAR(world.getRiskBountyMultiplier(), 1.35f, 1e-4f, "Tempest Squall Charter multiplier is 1.35x");
+    world.cycleRiskContract();
+    ASSERT_NEAR(world.getRiskBountyMultiplier(), 1.50f, 1e-4f, "Glass-Cannon Broadside Charter multiplier is 1.50x");
+
+    world.playerShip.isDestroyed = true;
+    world.emergencyRefloatPlayerShip();
+    ASSERT_TRUE(!world.playerShip.isDestroyed, "emergencyRefloatPlayerShip restores flagship from destroyed state");
+
+    // 6. Verify Daily Sky-Voyage Mode initialization
+    world.startDailySkyVoyage();
+    ASSERT_TRUE(world.isDailyVoyage, "startDailySkyVoyage sets isDailyVoyage = true");
+    ASSERT_TRUE(!world.dailyDateLabel.empty(), "Daily date label is populated");
+    return 0;
+}
+
 int main() {
     std::printf("=== Running AETHERNAUT 3D Physics & Simulation Test Suite ===\n");
     if (testMathAndRaycasting() != 0) return 1;
@@ -376,9 +436,13 @@ int main() {
     if (testOfficersAbilitiesTradingAndCampaignPersistence() != 0) return 1;
     std::printf("[PASS] Officers, Commodity Trading, Fleet Orders, Homing Torpedoes & Campaign Persistence\n");
 
+    if (testElderBossCounterplaySkyEcosystemWondersAndDailyVoyage() != 0) return 1;
+    std::printf("[PASS] Elder Boss Counterplay, 36 Sky-Ray Boids, 10 Sky-Wonders, 12 Lore Logs & Daily Voyage\n");
+
     if (testHeadlessWorldCombatAndTethers() != 0) return 1;
     std::printf("[PASS] 30-Second 120Hz Headless 3D World & AI Fleet Simulation\n");
 
     std::printf("=== ALL TESTS PASSED ===\n");
     return 0;
 }
+

@@ -10,6 +10,7 @@ uniform mat4 matModel;
 uniform mat4 matNormal;
 
 out vec3 fragPosition;
+out vec3 fragLocalPos;
 out vec2 fragTexCoord;
 out vec4 fragColor;
 out vec3 fragNormal;
@@ -17,6 +18,7 @@ out vec3 fragNormal;
 void main() {
     vec4 worldPos = matModel * vec4(vertexPosition, 1.0);
     fragPosition = worldPos.xyz;
+    fragLocalPos = vertexPosition;
     fragTexCoord = vertexTexCoord;
     fragColor = vertexColor;
     fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));

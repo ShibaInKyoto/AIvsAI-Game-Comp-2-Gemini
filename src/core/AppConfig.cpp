@@ -15,6 +15,8 @@ AppConfig AppConfig::parseArgs(int argc, char** argv) {
             cfg.windowed = false;
         } else if (arg == "--no-audio") {
             cfg.enableAudio = false;
+        } else if (arg == "--reduce-flashing") {
+            cfg.reduceFlashing = true;
         } else if (arg == "--perf") {
             cfg.showPerfOverlay = true;
         } else if (arg == "--size" && i + 1 < argc) {
@@ -39,8 +41,8 @@ AppConfig AppConfig::parseArgs(int argc, char** argv) {
             if (sc == "title" || sc == "0") cfg.startScene = InitialScene::Title;
             else if (sc == "flight" || sc == "campaign" || sc == "1") cfg.startScene = InitialScene::Flight;
             else if (sc == "drydock" || sc == "shipyard" || sc == "2") cfg.startScene = InitialScene::Drydock;
-            else if (sc == "leviathan" || sc == "hunt" || sc == "3") cfg.startScene = InitialScene::LeviathanHunt;
-            else if (sc == "skirmish" || sc == "4") cfg.startScene = InitialScene::FleetSkirmish;
+            else if (sc == "leviathan" || sc == "leviathan_hunt" || sc == "hunt" || sc == "3") cfg.startScene = InitialScene::LeviathanHunt;
+            else if (sc == "skirmish" || sc == "fleet_skirmish" || sc == "4") cfg.startScene = InitialScene::FleetSkirmish;
         }
     }
     return cfg;

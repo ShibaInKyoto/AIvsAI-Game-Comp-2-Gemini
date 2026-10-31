@@ -101,6 +101,49 @@ struct SkySurvivorPod {
     bool rescued = false;
 };
 
+// Ambient 3D Sky-Ecosystem Fauna: Cohesive Sky-Ray Boid Shoals
+struct SkyRayBoid {
+    Vec3 position{0.0f, 145.0f, 0.0f};
+    Vec3 velocity{12.0f, 0.0f, 0.0f};
+    Vec3 homeCenter{0.0f, 145.0f, 0.0f};
+    float wingPhase = 0.0f;
+    float scale = 2.4f;
+    int flockId = 0;
+    ColorRGB color{75, 195, 235};
+};
+
+// Ambient 3D Sky-Ecosystem Fauna: Bioluminescent Aether-Medusae
+struct SkyJellyfish {
+    Vec3 position{0.0f, 130.0f, 0.0f};
+    float baseAltitude = 130.0f;
+    float pulsePhase = 0.0f;
+    float radius = 2.6f;
+    ColorRGB bellColor{135, 235, 255};
+    ColorRGB tentacleColor{235, 125, 255};
+};
+
+// 10 Discoverable Architectural & Natural Sky-Wonders
+struct SkyWonder {
+    int id = 0;
+    std::string name;
+    std::string subtitle;
+    std::string loreText;
+    Vec3 position{0.0f, 140.0f, 0.0f};
+    int styleVariant = 0; // 0: Sun-Dial Arch, 1: Crystal Spire Ring, 2: Titan Anchor, 3: Astrolabe Sanctuary
+    ColorRGB accentColor{95, 235, 255};
+    bool discovered = false;
+};
+
+// 12 Recoverable Expedition Lore Logs from the First Sky-Armada
+struct LoreLogEntry {
+    int id = 0;
+    std::string title;
+    std::string author;
+    std::string excerpt;
+    Vec3 position{0.0f, 136.0f, 0.0f};
+    bool recovered = false;
+};
+
 enum class FleetOrder {
     EscortFormation = 0,
     FocusMyTarget = 1,
@@ -120,6 +163,16 @@ public:
     World();
 
     void initWorld(uint64_t seed, int playerBlueprintIdx = 0, bool sandboxMode = false);
+    void startDailySkyVoyage();
+    void cycleRiskContract();
+    static const char* getRiskContractName(int idx);
+    static const char* getRiskContractDesc(int idx);
+    float getRiskBountyMultiplier() const;
+    void togglePlayerSearchlight();
+    void emergencyRefloatPlayerShip();
+    int discoveredWonderCount() const;
+    int recoveredLoreLogCount() const;
+
     void spawnLeviathanEncounter(LeviathanSpecies species, const Vec3& pos);
     void spawnPirateSquadron(int count, const Vec3& centerPos);
     void spawnAlliedWingman(int blueprintIdx, const Vec3& pos);
@@ -192,6 +245,10 @@ public:
     std::vector<SkyMine3D> skyMines;
     std::vector<AetherMeteor3D> meteors;
     std::vector<SkySurvivorPod> survivorPods;
+    std::vector<SkyRayBoid> skyRayBoids;
+    std::vector<SkyJellyfish> skyJellies;
+    std::vector<SkyWonder> skyWonders;
+    std::vector<LoreLogEntry> loreLogs;
     std::vector<HarpoonTether> tethers;
     std::vector<DetachedDebris> debris;
     std::vector<SalvageCrate> crates;
@@ -233,6 +290,14 @@ public:
     FleetOrder currentFleetOrder = FleetOrder::EscortFormation;
     WeatherState currentWeather = WeatherState::ClearTradeWinds;
 
+    // Daily Sky-Voyage, Risk/Reward Contracts & Searchlight state
+    bool playerSearchlightOn = true;
+    bool isDailyVoyage = false;
+    std::string dailyDateLabel = "2026-10-30";
+    int activeRiskContractIdx = 0; // 0..3
+    float voyageElapsedSeconds = 0.0f;
+    bool victoryAchieved = false;
+
     // Tactical Ability Cooldowns & States
     float damageControlCooldown = 0.0f;
     float sonarPingCooldown = 0.0f;
@@ -258,6 +323,8 @@ public:
     float statusBannerTimer = 8.0f;
 
 private:
+    void initSkyEcosystemAndWonders();
+    void stepSkyEcosystemAndWonders(float dt);
     void stepProjectiles(float dt);
     void stepPointDefense(float dt);
     void stepSkyMines(float dt);

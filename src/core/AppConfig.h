@@ -21,10 +21,12 @@ struct AppConfig {
     bool enableAudio = true;
     bool enableBloom = true;
     bool enableClouds = true;
+    bool reduceFlashing = false;
     bool showPerfOverlay = false;
-    float masterVolume = 0.8f;
-    float musicVolume = 0.55f;
-    float sfxVolume = 0.85f;
+    float masterVolume = 0.82f;
+    float musicVolume = 0.58f;
+    float sfxVolume = 0.86f;
+    float cameraFov = 58.0f;
     uint64_t worldSeed = 20261028ULL;
 
     // CLI automation & verification flags

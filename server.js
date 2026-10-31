@@ -65,7 +65,9 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/status') {
     const winExeExists = fs.existsSync(path.join(RELEASES_DIR, 'Aethernaut-Windows-x64', 'Aethernaut.exe'));
     const winZipExists = fs.existsSync(path.join(RELEASES_DIR, 'Aethernaut-Windows-x64.zip'));
-    const linuxBinExists = fs.existsSync(path.join('/tmp/build-linux/bin/Aethernaut'));
+    const linuxBinExists =
+      fs.existsSync(path.join(RELEASES_DIR, 'Aethernaut-Linux-x64', 'Aethernaut')) ||
+      fs.existsSync(path.join('/tmp/build-linux/bin/Aethernaut'));
     
     let winZipSize = 0;
     if (winZipExists) {
@@ -93,10 +95,13 @@ const server = http.createServer((req, res) => {
       metrics: {
         simulationRateHz: 120,
         voxelResolution: '15x11x23 (3,795 cells/vessel)',
-        leviathanSegments: '18-30 segments across 6 Colossal Species',
-        starterBlueprints: 10,
-        blockTypes: 20,
+        leviathanSegments: '18-30 segments across 6 Colossal Species + Boss Counterplay',
+        starterBlueprints: 12,
+        blockTypes: 22,
         leviathanSpecies: 6,
+        skyWonders: 10,
+        loreLogs: 12,
+        skyEcosystemEntities: '36 Sky-Ray Boids + 24 Aether-Medusa Jellyfish',
         tradeCommodities: 4,
         specialistOfficers: 5,
         islandsCount: 14
@@ -109,7 +114,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/api/run-tests') {
-    const testBin = '/tmp/build-linux/bin/aethernaut_tests';
+    const releaseTestBin = path.join(RELEASES_DIR, 'Aethernaut-Linux-x64', 'aethernaut_tests');
+    const testBin = fs.existsSync(releaseTestBin) ? releaseTestBin : '/tmp/build-linux/bin/aethernaut_tests';
     if (!fs.existsSync(testBin)) {
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: 'Test binary not found' }));
@@ -128,7 +134,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/api/run-benchmark') {
-    const benchBin = '/tmp/build-linux/bin/aethernaut_benchmark';
+    const releaseBenchBin = path.join(RELEASES_DIR, 'Aethernaut-Linux-x64', 'aethernaut_benchmark');
+    const benchBin = fs.existsSync(releaseBenchBin) ? releaseBenchBin : '/tmp/build-linux/bin/aethernaut_benchmark';
     if (!fs.existsSync(benchBin)) {
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: 'Benchmark binary not found' }));

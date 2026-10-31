@@ -34,23 +34,23 @@ void WorldRenderer::shutdown() {
 void WorldRenderer::updateEffects(World& world, float dt) {
     animTime_ += dt;
 
-    // Convert simulation explosion events into 3D visual particles
+    // Convert simulation explosion events into crisp 3D ordnance sparks
     for (const auto& exp : world.explosions) {
-        int count = exp.isElectricArc ? 16 : 26;
+        int count = exp.isElectricArc ? 5 : 8;
         for (int i = 0; i < count; ++i) {
             float theta = static_cast<float>(GetRandomValue(0, 628)) * 0.01f;
             float phi = static_cast<float>(GetRandomValue(-314, 314)) * 0.005f;
-            float spd = static_cast<float>(GetRandomValue(8, 38));
+            float spd = static_cast<float>(GetRandomValue(10, 34));
             VisualParticle3D pt;
             pt.position = exp.position;
             pt.velocity = {
                 std::cos(phi) * std::cos(theta) * spd,
-                std::sin(phi) * spd + 6.0f,
+                std::sin(phi) * spd + 4.5f,
                 std::cos(phi) * std::sin(theta) * spd
             };
             pt.color = toRayColor(exp.color);
-            pt.size = exp.radius * 0.30f;
-            pt.life = 0.48f + static_cast<float>(GetRandomValue(0, 42)) * 0.01f;
+            pt.size = std::clamp(exp.radius * 0.12f, 0.35f, 1.35f);
+            pt.life = 0.24f + static_cast<float>(GetRandomValue(0, 18)) * 0.01f;
             pt.maxLife = pt.life;
             particles_.push_back(pt);
         }
@@ -114,8 +114,49 @@ void WorldRenderer::renderWorld3D(
             break;
     }
 
-    pipeline.updateWorldUniforms(camPos, sunDir, sunCol, skyAmb, grdAmb, fogCol, 0.00048f);
+    pipeline.updateWorldUniforms(camPos, sunDir, sunCol, skyAmb, grdAmb, fogCol, 0.00042f, animTime_);
+
+    // Compute Dynamic Lights: Bow Searchlight, Nearest Elder Leviathan Core, and 3D Sonar Ring
+    Vec3 shipFwd = world.playerShip.orientationQuat().forward();
+    Vec3 searchlightPos = world.playerShip.position + shipFwd * (world.playerShip.boundingRadius * 0.65f) + Vec3{0.0f, 1.5f, 0.0f};
+    float searchlightActive = (!world.playerShip.isDestroyed && world.playerSearchlightOn) ? 1.0f : 0.0f;
+
+    Vec3 bossLightPos{0.0f, 0.0f, 0.0f};
+    Vec3 bossLightCol{0.25f, 0.92f, 1.0f};
+    float bossLightIntensity = 0.0f;
+    float bestBossDist = 1e30f;
+    for (const auto& lev : world.leviathans) {
+        if (lev.isSlain || lev.segments.empty()) continue;
+        float d = (lev.segments[0].position - camPos).length();
+        if (d < bestBossDist) {
+            bestBossDist = d;
+            bossLightPos = lev.segments[0].position;
+            bossLightCol = {
+                static_cast<float>(lev.coreColor.r) / 255.0f,
+                static_cast<float>(lev.coreColor.g) / 255.0f,
+                static_cast<float>(lev.coreColor.b) / 255.0f
+            };
+            bossLightIntensity = (lev.staggeredWindowTimer > 0.0f) ? 1.85f : (lev.barrierActive ? 1.35f : 0.85f);
+        }
+    }
+
+    float sonarStrength = (world.sonarWaveRadius > 0.0f)
+        ? std::clamp(1.0f - (world.sonarWaveRadius / 650.0f), 0.0f, 1.0f)
+        : 0.0f;
+
+    pipeline.updateDynamicLights(
+        searchlightPos,
+        shipFwd,
+        searchlightActive,
+        bossLightPos,
+        bossLightCol,
+        bossLightIntensity,
+        world.sonarWaveOrigin,
+        world.sonarWaveRadius,
+        sonarStrength
+    );
     pipeline.setEmissiveStrength(0.0f);
+    pipeline.setMaterialType(WorldMaterialType::Default);
 
     // Clear sky backdrop
     ClearBackground(clearBg);
@@ -255,6 +296,9 @@ void WorldRenderer::renderWorld3D(
     }
     pipeline.setEmissiveStrength(0.0f);
 
+    // 2E. Render 3D Sky-Ecosystem Fauna (Sky-Ray Boid Shoals, Bioluminescent Medusae), 10 Sky-Wonders & 12 Lore Logs
+    renderSkyEcosystemAndWonders(world, camPos, animTime_, pipeline);
+
     // 3. Render Player Airship
     if (!world.playerShip.isDestroyed) {
         renderAirship(
@@ -262,14 +306,15 @@ void WorldRenderer::renderWorld3D(
             pipeline,
             drydockPreview,
             true,
-            world.isPlayerWalkingOnDeck
+            world.isPlayerWalkingOnDeck,
+            world.playerSearchlightOn
         );
     }
 
     // 4. Render NPC Airships (Pirate Squadrons & Allied Wingmen)
     for (const auto& npc : world.npcShips) {
         if (!npc.isDestroyed && (npc.position - camPos).length() < 1500.0f) {
-            renderAirship(npc, pipeline, nullptr, false, false);
+            renderAirship(npc, pipeline, nullptr, false, false, false);
         }
     }
 
@@ -572,8 +617,9 @@ void WorldRenderer::renderSkyDomeAndSun(const Vec3& camPos, const Vec3& sunDir, 
 }
 
 void WorldRenderer::renderCloudSea(const Vec3& camPos, float time, ShaderPipeline& pipeline) {
-    pipeline.setEmissiveStrength(0.06f);
-    const float gridStep = 135.0f;
+    pipeline.setMaterialType(WorldMaterialType::CloudSea);
+    pipeline.setEmissiveStrength(0.05f);
+    const float gridStep = 130.0f;
     float baseX = std::floor(camPos.x / gridStep) * gridStep;
     float baseZ = std::floor(camPos.z / gridStep) * gridStep;
 
@@ -581,16 +627,27 @@ void WorldRenderer::renderCloudSea(const Vec3& camPos, float time, ShaderPipelin
         for (int gx = -6; gx <= 6; ++gx) {
             float wx = baseX + static_cast<float>(gx) * gridStep;
             float wz = baseZ + static_cast<float>(gz) * gridStep;
-            float wave = std::sin(wx * 0.008f + time * 0.35f) * std::cos(wz * 0.008f + time * 0.25f);
-            float cy = 34.0f + wave * 8.5f;
+            float wave = std::sin(wx * 0.008f + time * 0.32f) * std::cos(wz * 0.008f + time * 0.24f);
+            float cy = 32.0f + wave * 8.5f;
 
+            // Primary billowy cloud bank
             rlPushMatrix();
             rlTranslatef(wx, cy, wz);
-            rlScalef(92.0f, 13.5f, 92.0f);
-            DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, Color{224, 236, 250, 255});
+            rlScalef(98.0f, 14.5f, 98.0f);
+            DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, Color{226, 238, 252, 255});
             rlPopMatrix();
+
+            // Secondary offset cumulus puff for organic multi-lobed cloud silhouettes
+            if (((gx + gz) & 1) == 0) {
+                rlPushMatrix();
+                rlTranslatef(wx + 38.0f, cy + 6.5f, wz - 28.0f);
+                rlScalef(64.0f, 12.0f, 68.0f);
+                DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, Color{238, 245, 255, 255});
+                rlPopMatrix();
+            }
         }
     }
+    pipeline.setMaterialType(WorldMaterialType::Default);
     pipeline.setEmissiveStrength(0.0f);
 }
 
@@ -603,38 +660,43 @@ void WorldRenderer::renderIsland(const SkyIsland& isl, float time, ShaderPipelin
     rlPushMatrix();
     rlTranslatef(isl.position.x, isl.position.y, isl.position.z);
 
-    // 1. Primary Inverted Rocky Stalactite Underbelly Cone
+    // 1. Primary Inverted Rocky Stalactite Underbelly Cone + Craggy Sub-Spires
+    pipeline.setMaterialType(WorldMaterialType::IslandRock);
     rlPushMatrix();
     rlTranslatef(0.0f, -isl.thickness, 0.0f);
-    rlScalef(isl.radius * 0.92f, isl.thickness, isl.radius * 0.92f);
+    rlScalef(isl.radius * 0.94f, isl.thickness, isl.radius * 0.94f);
     DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, rockCol);
     rlPopMatrix();
 
-    // 2. Procedural Perimeter Crag Buttresses & Hanging Stalactites (6 around rim)
-    for (int k = 0; k < 6; ++k) {
-        float ang = static_cast<float>(k) * (kTwoPi / 6.0f) + static_cast<float>(isl.id) * 0.75f;
+    // 2. Procedural Perimeter Crag Buttresses & Hanging Stalactites (8 around rim)
+    for (int k = 0; k < 8; ++k) {
+        float ang = static_cast<float>(k) * (kTwoPi / 8.0f) + static_cast<float>(isl.id) * 0.75f;
         float rimDist = isl.radius * (0.68f + 0.14f * std::sin(static_cast<float>(k * 3 + isl.id)));
         float bx = std::cos(ang) * rimDist;
         float bz = std::sin(ang) * rimDist;
         float cragR = isl.radius * (0.28f + 0.06f * (k % 3));
         float cragH = isl.thickness * (0.55f + 0.15f * ((k + isl.id) % 3));
 
-        // Hanging stalactite spire
+        // Hanging stalactite spire beneath rim
+        pipeline.setMaterialType(WorldMaterialType::IslandRock);
         rlPushMatrix();
-        rlTranslatef(bx, -cragH - 2.0f, bz);
+        rlTranslatef(bx, -cragH * 0.45f - 4.0f, bz);
+        rlRotatef(180.0f, 1.0f, 0.0f, 0.0f);
         rlScalef(cragR, cragH, cragR);
         DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, darkRockCol);
         rlPopMatrix();
 
         // Stepped cliff terrace block
+        pipeline.setMaterialType(WorldMaterialType::IslandTurf);
         rlPushMatrix();
         rlTranslatef(bx * 0.92f, -3.5f, bz * 0.92f);
-        rlScalef(cragR * 1.15f, 7.5f, cragR * 1.15f);
+        rlScalef(cragR * 1.18f, 7.5f, cragR * 1.18f);
         DrawModel(models_.cylinder, {0.0f, 0.0f, 0.0f}, 1.0f, terraceCol);
         rlPopMatrix();
     }
 
     // 3. Main Top Biome Plateau & Upper Stepped Terrace
+    pipeline.setMaterialType(WorldMaterialType::IslandTurf);
     rlPushMatrix();
     rlTranslatef(0.0f, -4.5f, 0.0f);
     rlScalef(isl.radius, 9.0f, isl.radius);
@@ -643,20 +705,75 @@ void WorldRenderer::renderIsland(const SkyIsland& isl, float time, ShaderPipelin
 
     rlPushMatrix();
     rlTranslatef(0.0f, 1.5f, 0.0f);
-    rlScalef(isl.radius * 0.64f, 6.0f, isl.radius * 0.64f);
+    rlScalef(isl.radius * 0.66f, 6.0f, isl.radius * 0.66f);
     DrawModel(models_.cylinder, {0.0f, 0.0f, 0.0f}, 1.0f, terraceCol);
     rlPopMatrix();
 
-    // 4. Central Mountain Crag Spire + Secondary Twin Peak
+    // 3B. Procedural 3D Pine / Sky-Cypress Groves & Ancient Stone Ruins on Island Plateau
+    for (int t = 0; t < 10; ++t) {
+        float tang = static_cast<float>(t) * (kTwoPi / 10.0f) + static_cast<float>(isl.id) * 1.1f;
+        float tr = isl.radius * (0.42f + 0.34f * ((t * 7 + isl.id) % 5) * 0.2f);
+        float tx = std::cos(tang) * tr;
+        float tz = std::sin(tang) * tr;
+        float treeScale = 1.0f + 0.25f * static_cast<float>((t + isl.id) % 3);
+
+        // Timber trunk
+        pipeline.setMaterialType(WorldMaterialType::WoodHull);
+        DrawCylinderEx({tx, 3.5f, tz}, {tx, 3.5f + 4.5f * treeScale, tz}, 0.7f, 0.45f, 6, Color{112, 78, 48, 255});
+
+        // Two-tiered canopy cones
+        pipeline.setMaterialType(WorldMaterialType::IslandTurf);
+        Color foliageCol = (isl.biome == SkyBiome::WindmillSteppe)
+            ? Color{198, 148, 58, 255}
+            : Color{46, 128, 74, 255};
+        rlPushMatrix();
+        rlTranslatef(tx, 6.5f * treeScale, tz);
+        rlScalef(3.2f * treeScale, 6.5f * treeScale, 3.2f * treeScale);
+        DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, foliageCol);
+        rlPopMatrix();
+
+        rlPushMatrix();
+        rlTranslatef(tx, 9.8f * treeScale, tz);
+        rlScalef(2.3f * treeScale, 5.2f * treeScale, 2.3f * treeScale);
+        DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, darkenColor(foliageCol, 1.12f));
+        rlPopMatrix();
+    }
+
+    // 3C. Cascading Sky-Waterfall pouring off the Island Cliff Rim into the Cloud Sea
+    {
+        float fallAng = static_cast<float>(isl.id) * 1.7f + 0.8f;
+        float fx = std::cos(fallAng) * (isl.radius * 0.94f);
+        float fz = std::sin(fallAng) * (isl.radius * 0.94f);
+        pipeline.setMaterialType(WorldMaterialType::AetherCrystal);
+        pipeline.setEmissiveStrength(0.65f);
+        DrawCylinderEx(
+            {fx, 2.0f, fz},
+            {fx * 1.06f, -isl.thickness * 0.95f, fz * 1.06f},
+            2.8f, 4.6f, 8, Color{135, 232, 255, 195}
+        );
+        // Mist spray cloud at base of waterfall
+        float mistPulse = 5.5f + 1.2f * std::sin(time * 3.5f + static_cast<float>(isl.id));
+        DrawSphere({fx * 1.06f, -isl.thickness * 0.85f, fz * 1.06f}, mistPulse, Color{225, 248, 255, 175});
+        pipeline.setEmissiveStrength(0.0f);
+    }
+
+    // 4. Central Mountain Crag Spire + Secondary Twin Peak + Jagged Shoulder Ridge
+    pipeline.setMaterialType(WorldMaterialType::IslandRock);
     rlPushMatrix();
     rlTranslatef(0.0f, 5.0f, 0.0f);
-    rlScalef(isl.radius * 0.36f, isl.spireHeight, isl.radius * 0.36f);
+    rlScalef(isl.radius * 0.38f, isl.spireHeight, isl.radius * 0.38f);
     DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, rockCol);
     rlPopMatrix();
 
     rlPushMatrix();
     rlTranslatef(-isl.radius * 0.24f, 4.0f, isl.radius * 0.18f);
-    rlScalef(isl.radius * 0.24f, isl.spireHeight * 0.68f, isl.radius * 0.24f);
+    rlScalef(isl.radius * 0.25f, isl.spireHeight * 0.72f, isl.radius * 0.25f);
+    DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, darkRockCol);
+    rlPopMatrix();
+
+    rlPushMatrix();
+    rlTranslatef(isl.radius * 0.22f, 3.5f, -isl.radius * 0.16f);
+    rlScalef(isl.radius * 0.20f, isl.spireHeight * 0.56f, isl.radius * 0.20f);
     DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, darkRockCol);
     rlPopMatrix();
 
@@ -685,6 +802,7 @@ void WorldRenderer::renderIsland(const SkyIsland& isl, float time, ShaderPipelin
         rlPopMatrix();
         rlPopMatrix();
     } else if (isl.biome == SkyBiome::CrystalReef || isl.biome == SkyBiome::MaelstromEye) {
+        pipeline.setMaterialType(WorldMaterialType::AetherCrystal);
         pipeline.setEmissiveStrength(1.1f);
         rlPushMatrix();
         rlTranslatef(0.0f, isl.spireHeight + 14.0f, 0.0f);
@@ -695,6 +813,7 @@ void WorldRenderer::renderIsland(const SkyIsland& isl, float time, ShaderPipelin
         rlPopMatrix();
         pipeline.setEmissiveStrength(0.0f);
     }
+    pipeline.setMaterialType(WorldMaterialType::Default);
 
     // 5. Drydock Sky-Port Pier, Steel Gantry Cranes & Docking Beacons (on Northern -Z Rim)
     if (isl.hasDrydockPort) {
@@ -895,41 +1014,49 @@ void WorldRenderer::renderSingleBlock3D(
         case BlockId::WoodHull:
         case BlockId::IronArmor:
         case BlockId::OrichalcumArmor: {
+            pipeline.setMaterialType(
+                (id == BlockId::WoodHull) ? WorldMaterialType::WoodHull : WorldMaterialType::MetalArmor
+            );
             rlPushMatrix();
-            rlScalef(kVoxelSize * 0.96f, kVoxelSize * 0.96f, kVoxelSize * 0.96f);
+            rlScalef(kVoxelSize * 1.00f, kVoxelSize * 1.00f, kVoxelSize * 1.00f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
-            DrawCubeWires({0.0f, 0.0f, 0.0f}, 1.01f, 1.01f, 1.01f, accCol);
             rlPopMatrix();
 
-            // Upper deck trim / riveted plate band
+            // Solid beveled upper gunwale / riveted brass trim band (no noisy wireframe!)
             if (id == BlockId::OrichalcumArmor) {
-                pipeline.setEmissiveStrength(0.75f);
+                pipeline.setEmissiveStrength(0.65f);
             }
+            pipeline.setMaterialType(WorldMaterialType::MetalArmor);
             rlPushMatrix();
-            rlTranslatef(0.0f, kVoxelSize * 0.42f, 0.0f);
-            rlScalef(kVoxelSize * 0.88f, kVoxelSize * 0.14f, kVoxelSize * 0.88f);
+            rlTranslatef(0.0f, kVoxelSize * 0.44f, 0.0f);
+            rlScalef(kVoxelSize * 1.02f, kVoxelSize * 0.13f, kVoxelSize * 1.02f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
             rlPopMatrix();
+            pipeline.setMaterialType(WorldMaterialType::Default);
             break;
         }
         case BlockId::LiftBalloon: {
-            // Pressurized gas bag envelope
+            // Streamlined pressurized dirigible gas envelope cell that blends seamlessly with neighbors
+            pipeline.setMaterialType(WorldMaterialType::GasEnvelope);
             rlPushMatrix();
-            rlScalef(kVoxelSize * 0.64f, kVoxelSize * 0.58f, kVoxelSize * 0.68f);
+            rlScalef(kVoxelSize * 0.92f, kVoxelSize * 0.78f, kVoxelSize * 1.12f);
             DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, priCol);
             rlPopMatrix();
 
-            // Equatorial brass rigging harness & vertical rope band
+            // Equatorial brass rigging girdle & suspension stanchion
+            pipeline.setMaterialType(WorldMaterialType::MetalArmor);
             rlPushMatrix();
-            rlScalef(kVoxelSize * 0.56f, kVoxelSize * 0.26f, kVoxelSize * 0.56f);
+            rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+            rlScalef(kVoxelSize * 0.68f, kVoxelSize * 0.18f, kVoxelSize * 0.68f);
             DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
             rlPopMatrix();
 
             rlPushMatrix();
-            rlTranslatef(0.0f, -kVoxelSize * 0.35f, 0.0f);
-            rlScalef(kVoxelSize * 0.24f, kVoxelSize * 0.35f, kVoxelSize * 0.24f);
+            rlTranslatef(0.0f, -kVoxelSize * 0.40f, 0.0f);
+            rlScalef(kVoxelSize * 0.22f, kVoxelSize * 0.36f, kVoxelSize * 0.22f);
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, accCol);
             rlPopMatrix();
+            pipeline.setMaterialType(WorldMaterialType::Default);
             break;
         }
         case BlockId::AetherCore: {
@@ -1247,7 +1374,8 @@ void WorldRenderer::renderAirship(
     ShaderPipeline& pipeline,
     const DrydockGhostPreview* drydockPreview,
     bool isPlayerShip,
-    bool showCaptainAvatar
+    bool showCaptainAvatar,
+    bool bowSearchlightOn
 ) {
     rlPushMatrix();
     rlTranslatef(ship.position.x, ship.position.y, ship.position.z);
@@ -1256,6 +1384,63 @@ void WorldRenderer::renderAirship(
     rlRotatef(ship.yaw * kRadToDeg, 0.0f, 1.0f, 0.0f);
     rlRotatef(ship.pitch * kRadToDeg, 1.0f, 0.0f, 0.0f);
     rlRotatef(ship.roll * kRadToDeg, 0.0f, 0.0f, 1.0f);
+
+    // Track lift-balloon envelope bounds per (gx, gy) column to render cohesive streamlined dirigible lobes!
+    for (int gy = Airship::minY(); gy <= Airship::maxY(); ++gy) {
+        for (int gx = Airship::minX(); gx <= Airship::maxX(); ++gx) {
+            int zStart = 999;
+            int zEnd = -999;
+            for (int gz = Airship::minZ(); gz <= Airship::maxZ(); ++gz) {
+                if (ship.getCell(gx, gy, gz).id == BlockId::LiftBalloon) {
+                    if (zStart == 999) zStart = gz;
+                    zEnd = gz;
+                } else if (zStart != 999) {
+                    if (zEnd > zStart) {
+                        Vec3 p0 = ship.gridToLocalPos(gx, gy, zStart);
+                        Vec3 p1 = ship.gridToLocalPos(gx, gy, zEnd);
+                        Vec3 mid = (p0 + p1) * 0.5f;
+                        float spanZ = std::abs(p1.z - p0.z) * 0.56f + kVoxelSize * 0.85f;
+                        Color envCol = Color{240, 234, 214, 255};
+                        if (ship.hullLiveryId == 1) envCol = Color{235, 244, 255, 255};
+                        else if (ship.hullLiveryId == 2) envCol = Color{58, 48, 56, 255};
+                        else if (ship.hullLiveryId == 3) envCol = Color{252, 235, 175, 255};
+                        else if (ship.hullLiveryId == 4) envCol = Color{58, 48, 82, 255};
+                        else if (ship.hullLiveryId == 5) envCol = Color{215, 242, 222, 255};
+
+                        pipeline.setMaterialType(WorldMaterialType::GasEnvelope);
+                        rlPushMatrix();
+                        rlTranslatef(mid.x, mid.y, mid.z);
+                        rlScalef(kVoxelSize * 0.98f, kVoxelSize * 0.86f, spanZ);
+                        DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, envCol);
+                        rlPopMatrix();
+                        pipeline.setMaterialType(WorldMaterialType::Default);
+                    }
+                    zStart = 999;
+                    zEnd = -999;
+                }
+            }
+            if (zStart != 999 && zEnd > zStart) {
+                Vec3 p0 = ship.gridToLocalPos(gx, gy, zStart);
+                Vec3 p1 = ship.gridToLocalPos(gx, gy, zEnd);
+                Vec3 mid = (p0 + p1) * 0.5f;
+                float spanZ = std::abs(p1.z - p0.z) * 0.56f + kVoxelSize * 0.85f;
+                Color envCol = Color{240, 234, 214, 255};
+                if (ship.hullLiveryId == 1) envCol = Color{235, 244, 255, 255};
+                else if (ship.hullLiveryId == 2) envCol = Color{58, 48, 56, 255};
+                else if (ship.hullLiveryId == 3) envCol = Color{252, 235, 175, 255};
+                else if (ship.hullLiveryId == 4) envCol = Color{58, 48, 82, 255};
+                else if (ship.hullLiveryId == 5) envCol = Color{215, 242, 222, 255};
+
+                pipeline.setMaterialType(WorldMaterialType::GasEnvelope);
+                rlPushMatrix();
+                rlTranslatef(mid.x, mid.y, mid.z);
+                rlScalef(kVoxelSize * 0.98f, kVoxelSize * 0.86f, spanZ);
+                DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, envCol);
+                rlPopMatrix();
+                pipeline.setMaterialType(WorldMaterialType::Default);
+            }
+        }
+    }
 
     for (int gz = Airship::minZ(); gz <= Airship::maxZ(); ++gz) {
         for (int gy = Airship::minY(); gy <= Airship::maxY(); ++gy) {
@@ -1293,11 +1478,21 @@ void WorldRenderer::renderAirship(
         }
     }
 
-    // 3D Hexagonal Energy Shield Dome Visualization (when shield projectors active or shield struck)
-    if (ship.shieldHp > 0.0f && (ship.shieldProjectorCount > 0 || ship.shieldHitFlashTimer > 0.0f)) {
-        pipeline.setEmissiveStrength(1.35f);
+    // Render Bow Aether-Searchlight Lantern & Volumetric Cone (when active on Player Flagship)
+    if (isPlayerShip && bowSearchlightOn && !drydockPreview) {
+        pipeline.setEmissiveStrength(1.75f);
+        Vector3 lampPos = {0.0f, 1.2f, -ship.boundingRadius * 0.62f};
+        Vector3 beamMid = {0.0f, -1.5f, -ship.boundingRadius * 0.62f - 48.0f};
+        DrawSphere(lampPos, 0.85f, Color{255, 248, 210, 255});
+        DrawCylinderEx(lampPos, beamMid, 0.65f, 9.5f, 10, Color{255, 245, 195, 36});
+        pipeline.setEmissiveStrength(0.0f);
+    }
+
+    // 3D Hexagonal Energy Shield Dome Visualization (when shield struck)
+    if (ship.shieldHp > 0.0f && ship.shieldHitFlashTimer > 0.02f) {
+        pipeline.setEmissiveStrength(1.25f);
         float flashRatio = std::clamp(ship.shieldHitFlashTimer / 0.45f, 0.0f, 1.0f);
-        uint8_t alpha = static_cast<uint8_t>(38.0f + flashRatio * 155.0f);
+        uint8_t alpha = static_cast<uint8_t>(flashRatio * 75.0f);
         DrawSphereWires(
             {0.0f, 1.0f, 0.0f},
             ship.boundingRadius * 0.92f,
@@ -1353,10 +1548,169 @@ void WorldRenderer::renderAirship(
     rlPopMatrix();
 }
 
+void WorldRenderer::renderSkyEcosystemAndWonders(
+    const World& world,
+    const Vec3& camPos,
+    float time,
+    ShaderPipeline& pipeline
+) {
+    // 1. Render 36 Cohesive 3D Sky-Ray Boid Shoals
+    pipeline.setMaterialType(WorldMaterialType::LeviathanHide);
+    for (const auto& b : world.skyRayBoids) {
+        if ((b.position - camPos).length() > 1100.0f) continue;
+        float yawDeg = std::atan2(-b.velocity.x, -b.velocity.z) * kRadToDeg;
+        float flapDeg = std::sin(b.wingPhase) * 26.0f;
+        Color rayCol = toRayColor(b.color);
+
+        rlPushMatrix();
+        rlTranslatef(b.position.x, b.position.y, b.position.z);
+        rlRotatef(yawDeg, 0.0f, 1.0f, 0.0f);
+
+        // Sleek manta body
+        pipeline.setEmissiveStrength(0.35f);
+        rlPushMatrix();
+        rlScalef(b.scale * 0.65f, b.scale * 0.24f, b.scale * 1.45f);
+        DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, rayCol);
+        rlPopMatrix();
+
+        // Articulated flapping pectoral wings
+        for (int side : {-1, +1}) {
+            rlPushMatrix();
+            rlRotatef(static_cast<float>(side) * flapDeg, 0.0f, 0.0f, 1.0f);
+            rlTranslatef(static_cast<float>(side) * b.scale * 1.15f, 0.0f, 0.0f);
+            rlScalef(b.scale * 2.1f, b.scale * 0.12f, b.scale * 0.95f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, rayCol);
+            rlPopMatrix();
+        }
+
+        // Glowing bioluminescent tail streamer
+        pipeline.setEmissiveStrength(1.35f);
+        DrawCylinderEx({0.0f, 0.0f, b.scale * 1.2f}, {0.0f, 0.0f, b.scale * 3.2f}, 0.22f, 0.04f, 5, Color{135, 245, 255, 220});
+        rlPopMatrix();
+    }
+
+    // 2. Render 24 Bioluminescent Aether-Medusa Jellyfish
+    pipeline.setMaterialType(WorldMaterialType::AetherCrystal);
+    for (const auto& j : world.skyJellies) {
+        if ((j.position - camPos).length() > 950.0f) continue;
+        float contract = 1.0f + 0.18f * std::sin(j.pulsePhase);
+        Color bellCol = toRayColor(j.bellColor, 215);
+        Color tentCol = toRayColor(j.tentacleColor, 195);
+
+        pipeline.setEmissiveStrength(1.45f);
+        rlPushMatrix();
+        rlTranslatef(j.position.x, j.position.y, j.position.z);
+        rlPushMatrix();
+        rlScalef(j.radius * contract, j.radius * (1.35f / contract), j.radius * contract);
+        DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, bellCol);
+        rlPopMatrix();
+
+        // 4 trailing bioluminescent tentacles
+        for (int t = 0; t < 4; ++t) {
+            float tang = static_cast<float>(t) * (kTwoPi * 0.25f) + j.pulsePhase * 0.3f;
+            float tx = std::cos(tang) * (j.radius * 0.48f);
+            float tz = std::sin(tang) * (j.radius * 0.48f);
+            float sway = std::sin(j.pulsePhase + static_cast<float>(t)) * 1.1f;
+            DrawCylinderEx(
+                {tx, -0.4f, tz},
+                {tx + sway, -j.radius * 2.8f, tz - sway},
+                0.20f, 0.05f, 5, tentCol
+            );
+        }
+        rlPopMatrix();
+    }
+
+    // 3. Render 10 Monumental 3D Sky-Wonders
+    for (const auto& w : world.skyWonders) {
+        if ((w.position - camPos).length() > 1550.0f) continue;
+        Color acc = toRayColor(w.accentColor);
+        Color stoneCol = Color{185, 178, 162, 255};
+
+        rlPushMatrix();
+        rlTranslatef(w.position.x, w.position.y, w.position.z);
+
+        pipeline.setMaterialType(WorldMaterialType::IslandRock);
+        pipeline.setEmissiveStrength(0.15f);
+        // Floating sanctuary base island-pedestal
+        rlPushMatrix();
+        rlTranslatef(0.0f, -10.0f, 0.0f);
+        rlRotatef(180.0f, 1.0f, 0.0f, 0.0f);
+        rlScalef(14.0f, 16.0f, 14.0f);
+        DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, stoneCol);
+        rlPopMatrix();
+
+        pipeline.setMaterialType(WorldMaterialType::AetherCrystal);
+        pipeline.setEmissiveStrength(w.discovered ? 1.85f : 1.35f);
+
+        if (w.styleVariant == 0) {
+            // Sun-Dial Colossus / Observatory Horizon Ring
+            rlPushMatrix();
+            rlTranslatef(0.0f, 12.0f, 0.0f);
+            rlRotatef(time * 16.0f, 0.0f, 1.0f, 0.0f);
+            rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+            rlScalef(16.0f, 2.2f, 16.0f);
+            DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, acc);
+            rlPopMatrix();
+            DrawSphere({0.0f, 12.0f, 0.0f}, 4.2f, acc);
+        } else if (w.styleVariant == 1) {
+            // Whispering Crystal Arch / Singing Monolith Twins
+            for (int side : {-1, +1}) {
+                rlPushMatrix();
+                rlTranslatef(static_cast<float>(side) * 8.5f, 4.0f, 0.0f);
+                rlRotatef(static_cast<float>(-side) * 14.0f, 0.0f, 0.0f, 1.0f);
+                rlScalef(3.2f, 22.0f, 3.2f);
+                DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, acc);
+                rlPopMatrix();
+            }
+            DrawSphere({0.0f, 20.0f, 0.0f}, 3.6f, Color{255, 240, 155, 255});
+        } else if (w.styleVariant == 2) {
+            // Titan's Anchor Chains / Leviathan Ribs
+            for (int r = 0; r < 3; ++r) {
+                rlPushMatrix();
+                rlTranslatef(0.0f, 5.0f + static_cast<float>(r) * 8.5f, 0.0f);
+                rlRotatef((r % 2 == 0) ? 0.0f : 90.0f, 0.0f, 1.0f, 0.0f);
+                rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+                rlScalef(6.5f, 1.8f, 6.5f);
+                DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, acc);
+                rlPopMatrix();
+            }
+        } else {
+            // Astrolabe of Vael / Storm-King Gyro Sanctuary
+            for (int g = 0; g < 3; ++g) {
+                rlPushMatrix();
+                rlTranslatef(0.0f, 12.0f, 0.0f);
+                rlRotatef(time * (22.0f + g * 14.0f), (g == 0) ? 1.0f : 0.2f, 1.0f, (g == 2) ? 1.0f : 0.0f);
+                float rad = 14.0f - static_cast<float>(g) * 3.0f;
+                rlScalef(rad, 1.4f, rad);
+                DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, acc);
+                rlPopMatrix();
+            }
+            DrawSphere({0.0f, 12.0f, 0.0f}, 3.5f, Color{255, 245, 195, 255});
+        }
+        rlPopMatrix();
+    }
+
+    // 4. Render 12 Recoverable Expedition Lore Log Beacons
+    for (const auto& log : world.loreLogs) {
+        if (log.recovered || (log.position - camPos).length() > 1100.0f) continue;
+        float bob = std::sin(time * 2.8f + static_cast<float>(log.id)) * 1.4f;
+        Vec3 p = log.position + Vec3{0.0f, bob, 0.0f};
+        pipeline.setEmissiveStrength(1.65f);
+        DrawSphere({p.x, p.y, p.z}, 1.65f, Color{95, 240, 255, 255});
+        DrawCylinderEx({p.x, p.y, p.z}, {p.x, p.y + 28.0f, p.z}, 0.45f, 0.08f, 6, Color{95, 240, 255, 155});
+    }
+
+    pipeline.setMaterialType(WorldMaterialType::Default);
+    pipeline.setEmissiveStrength(0.0f);
+}
+
 void WorldRenderer::renderLeviathan(const Leviathan& lev, float time, ShaderPipeline& pipeline) {
     Color armorCol = toRayColor(lev.bodyColor);
     Color spineCol = darkenColor(armorCol, 0.72f);
     Color coreCol = toRayColor(lev.coreColor);
+    bool isStaggered = (lev.staggeredWindowTimer > 0.0f);
+
+    pipeline.setMaterialType(WorldMaterialType::LeviathanHide);
 
     for (size_t i = 0; i < lev.segments.size(); ++i) {
         const LeviathanSegment& seg = lev.segments[i];
@@ -1368,39 +1722,48 @@ void WorldRenderer::renderLeviathan(const Leviathan& lev, float time, ShaderPipe
         rlRotatef(yawDeg, 0.0f, 1.0f, 0.0f);
         rlRotatef(pitchDeg, 1.0f, 0.0f, 0.0f);
 
-        // Glowing inner Aether Core if armor shattered or weak spot
+        // Glowing inner Aether Core if armor shattered, weak spot, or Staggered Exposed!
         bool armorBroken = (seg.armorHp <= 0.0f);
-        if (seg.hasWeakSpotCore || armorBroken) {
-            pipeline.setEmissiveStrength(armorBroken ? 1.65f : 0.85f);
+        if (seg.hasWeakSpotCore || armorBroken || isStaggered) {
+            pipeline.setEmissiveStrength(isStaggered ? 2.15f : (armorBroken ? 1.65f : 0.95f));
+            Color cCol = isStaggered ? Color{255, 235, 85, 255} : coreCol;
             rlPushMatrix();
             rlScalef(seg.radius * 0.82f, seg.radius * 0.82f, seg.radius * 0.82f);
-            DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, coreCol);
+            DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, cCol);
             rlPopMatrix();
             pipeline.setEmissiveStrength(0.0f);
         }
 
-        // Outer Carapace Segment + Dorsal Crest Spine
+        // Outer Carapace Segment + Armored Flank Plates + Dorsal Crest Spine
         if (!armorBroken) {
             rlPushMatrix();
-            rlScalef(seg.radius, seg.radius * 0.88f, seg.radius * 1.25f);
+            rlScalef(seg.radius * 0.94f, seg.radius * 0.82f, seg.radius * 1.28f);
             DrawModel(models_.sphere, {0.0f, 0.0f, 0.0f}, 1.0f, armorCol);
+            rlPopMatrix();
+
+            // Sculpted chitinous dorsal & lateral armor plates
+            rlPushMatrix();
+            rlTranslatef(0.0f, seg.radius * 0.36f, 0.0f);
+            rlScalef(seg.radius * 1.32f, seg.radius * 0.34f, seg.radius * 1.15f);
+            DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, spineCol);
             rlPopMatrix();
 
             // Dorsal ridge fin
             rlPushMatrix();
-            rlTranslatef(0.0f, seg.radius * 0.72f, 0.0f);
-            rlRotatef(-22.0f, 1.0f, 0.0f, 0.0f);
-            rlScalef(seg.radius * 0.25f, seg.radius * 0.75f, seg.radius * 0.55f);
+            rlTranslatef(0.0f, seg.radius * 0.82f, 0.0f);
+            rlRotatef(-25.0f, 1.0f, 0.0f, 0.0f);
+            rlScalef(seg.radius * 0.28f, seg.radius * 0.95f, seg.radius * 0.62f);
             DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, spineCol);
             rlPopMatrix();
         }
 
-        // Bioluminescent energy ring on every 3rd segment
-        if (i % 3 == 1) {
-            pipeline.setEmissiveStrength(1.2f);
+        // Bioluminescent energy ring on every 3rd segment (or Barrier Telegraph Aegis when barrierActive!)
+        if (i % 3 == 1 || (lev.barrierActive && i % 2 == 0)) {
+            pipeline.setEmissiveStrength(lev.barrierActive ? 1.75f : 1.25f);
             rlPushMatrix();
-            rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-            rlScalef(seg.radius * 0.78f, seg.radius * 0.35f, seg.radius * 0.78f);
+            rlRotatef(90.0f + (lev.barrierActive ? std::sin(time * 4.0f + static_cast<float>(i)) * 18.0f : 0.0f), 1.0f, 0.0f, 0.0f);
+            float ringScale = lev.barrierActive ? (seg.radius * 1.12f) : (seg.radius * 0.78f);
+            rlScalef(ringScale, seg.radius * 0.35f, ringScale);
             DrawModel(models_.torus, {0.0f, 0.0f, 0.0f}, 1.0f, coreCol);
             rlPopMatrix();
             pipeline.setEmissiveStrength(0.0f);
@@ -1415,10 +1778,20 @@ void WorldRenderer::renderLeviathan(const Leviathan& lev, float time, ShaderPipe
             DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, armorCol);
             rlPopMatrix();
 
-            // Glowing Leviathan Eyes & Lateral Horns
-            pipeline.setEmissiveStrength(1.55f);
-            DrawSphere({-seg.radius * 0.65f, seg.radius * 0.25f, -seg.radius * 0.65f}, 0.95f, coreCol);
-            DrawSphere({+seg.radius * 0.65f, seg.radius * 0.25f, -seg.radius * 0.65f}, 0.95f, coreCol);
+            // Swept-back cranial horns
+            for (int side : {-1, +1}) {
+                rlPushMatrix();
+                rlTranslatef(static_cast<float>(side) * seg.radius * 0.65f, seg.radius * 0.55f, 0.0f);
+                rlRotatef(52.0f, 1.0f, 0.0f, static_cast<float>(-side) * 0.4f);
+                rlScalef(seg.radius * 0.24f, seg.radius * 1.35f, seg.radius * 0.24f);
+                DrawModel(models_.cone, {0.0f, 0.0f, 0.0f}, 1.0f, coreCol);
+                rlPopMatrix();
+            }
+
+            // Glowing Leviathan Eyes & Crown Crest
+            pipeline.setEmissiveStrength(1.75f);
+            DrawSphere({-seg.radius * 0.65f, seg.radius * 0.25f, -seg.radius * 0.65f}, 1.05f, coreCol);
+            DrawSphere({+seg.radius * 0.65f, seg.radius * 0.25f, -seg.radius * 0.65f}, 1.05f, coreCol);
             pipeline.setEmissiveStrength(0.0f);
         }
 
@@ -1429,7 +1802,7 @@ void WorldRenderer::renderLeviathan(const Leviathan& lev, float time, ShaderPipe
                 rlPushMatrix();
                 rlRotatef(static_cast<float>(side) * flapDeg, 0.0f, 0.0f, 1.0f);
                 rlTranslatef(static_cast<float>(side) * seg.finSpan * 0.55f, 0.0f, 0.0f);
-                rlScalef(seg.finSpan, seg.radius * 0.18f, seg.radius * 1.15f);
+                rlScalef(seg.finSpan, seg.radius * 0.18f, seg.radius * 1.18f);
                 DrawModel(models_.cube, {0.0f, 0.0f, 0.0f}, 1.0f, armorCol);
                 rlPopMatrix();
             }
@@ -1437,6 +1810,8 @@ void WorldRenderer::renderLeviathan(const Leviathan& lev, float time, ShaderPipe
 
         rlPopMatrix();
     }
+
+    pipeline.setMaterialType(WorldMaterialType::Default);
 }
 
 } // namespace aethernaut

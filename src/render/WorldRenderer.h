@@ -57,12 +57,14 @@ private:
     void renderSkyDomeAndSun(const Vec3& camPos, const Vec3& sunDir, float time, ShaderPipeline& pipeline);
     void renderCloudSea(const Vec3& camPos, float time, ShaderPipeline& pipeline);
     void renderIsland(const SkyIsland& isl, float time, ShaderPipeline& pipeline);
+    void renderSkyEcosystemAndWonders(const World& world, const Vec3& camPos, float time, ShaderPipeline& pipeline);
     void renderAirship(
         const Airship& ship,
         ShaderPipeline& pipeline,
         const DrydockGhostPreview* drydockPreview,
         bool isPlayerShip,
-        bool showCaptainAvatar
+        bool showCaptainAvatar,
+        bool bowSearchlightOn = false
     );
     void renderLeviathan(const Leviathan& lev, float time, ShaderPipeline& pipeline);
 

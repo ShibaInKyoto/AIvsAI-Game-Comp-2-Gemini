@@ -19,74 +19,86 @@ Leviathan::Leviathan(
         case LeviathanSpecies::AzureSkyWhale:
             name_ = "Cetus Aetheria";
             title_ = "Elder Azure Sky-Whale";
+            signatureMechanicName_ = "HARMONIC SONG-SHELL";
+            counterplayHint_ = "PULSE SONAR [Q] OR LATCH HARPOON [RMB] TO SHATTER SONG-SHELL";
             numSegments = 18;
-            baseRadius = 7.0f;
+            baseRadius = 7.2f;
             baseArmor = 180.0f;
             maxTotalHp = 2400.0f;
             goldBounty = 450;
             aetherBounty = 16;
-            bodyColor = {42, 108, 168};
+            bodyColor = {42, 112, 178};
             coreColor = {65, 240, 255};
             break;
         case LeviathanSpecies::CrimsonStormWyrm:
             name_ = "Draconis Fulmen";
             title_ = "Crimson Storm-Wyrm";
+            signatureMechanicName_ = "FULMEN ION-STATIC SHROUD";
+            counterplayHint_ = "GROUND WITH HARPOON TETHERS [RMB+R] OR EMP NOVA [C]";
             numSegments = 24;
-            baseRadius = 5.4f;
+            baseRadius = 5.6f;
             baseArmor = 220.0f;
             maxTotalHp = 3400.0f;
             goldBounty = 700;
             aetherBounty = 26;
-            bodyColor = {168, 42, 58};
-            coreColor = {255, 185, 55};
+            bodyColor = {175, 42, 58};
+            coreColor = {255, 195, 55};
             break;
         case LeviathanSpecies::ObsidianDreadManta:
             name_ = "Raja Vorago";
             title_ = "Obsidian Dread-Manta";
+            signatureMechanicName_ = "ABYSSAL UMBRA CLOAK";
+            counterplayHint_ = "SHINE BOW SEARCHLIGHT [L] OR SONAR [Q] TO BURN AWAY CLOAK";
             numSegments = 16;
-            baseRadius = 7.8f;
+            baseRadius = 8.0f;
             baseArmor = 260.0f;
             maxTotalHp = 4200.0f;
             goldBounty = 950;
             aetherBounty = 35;
-            bodyColor = {62, 56, 88};
-            coreColor = {195, 95, 255};
+            bodyColor = {58, 52, 86};
+            coreColor = {205, 105, 255};
             break;
         case LeviathanSpecies::MaelstromSovereign:
             name_ = "Apex Charybdis";
             title_ = "The Maelstrom Sovereign";
+            signatureMechanicName_ = "SINGULARITY VORTEX AEGIS";
+            counterplayHint_ = "TETHER REEL [RMB+R] + SONAR [Q] / EMP [C] TO COLLAPSE VORTEX";
             numSegments = 30;
-            baseRadius = 8.5f;
+            baseRadius = 8.6f;
             baseArmor = 320.0f;
             maxTotalHp = 6500.0f;
             goldBounty = 1800;
             aetherBounty = 65;
-            bodyColor = {28, 38, 52};
-            coreColor = {255, 75, 125};
+            bodyColor = {28, 38, 54};
+            coreColor = {255, 75, 130};
             break;
         case LeviathanSpecies::GlacialCryoKraken:
             name_ = "Architeuthis Borealis";
             title_ = "Glacial Cryo-Kraken";
+            signatureMechanicName_ = "BOREAL PERMAFROST CARAPACE";
+            counterplayHint_ = "SHATTER ICE WITH SKY-MINE [X], BROADSIDE SALVOS, OR THERMAL GEYSER";
             numSegments = 22;
-            baseRadius = 7.4f;
+            baseRadius = 7.5f;
             baseArmor = 285.0f;
             maxTotalHp = 5200.0f;
             goldBounty = 1250;
             aetherBounty = 45;
-            bodyColor = {48, 138, 195};
-            coreColor = {145, 245, 255};
+            bodyColor = {48, 142, 202};
+            coreColor = {145, 248, 255};
             break;
         case LeviathanSpecies::SolarPhoenixSerpent:
             name_ = "Ignis Quetzal";
             title_ = "Solar Phoenix-Serpent";
+            signatureMechanicName_ = "HELIOS CORONA MANTLE";
+            counterplayHint_ = "SNIPE TAIL EXHAUST VENTS OR TRIGGER EMP NOVA [C] TO QUENCH CORONA";
             numSegments = 26;
-            baseRadius = 6.6f;
+            baseRadius = 6.8f;
             baseArmor = 295.0f;
             maxTotalHp = 5800.0f;
             goldBounty = 1500;
             aetherBounty = 55;
-            bodyColor = {225, 95, 32};
-            coreColor = {255, 235, 85};
+            bodyColor = {228, 98, 34};
+            coreColor = {255, 238, 88};
             break;
     }
 
@@ -112,13 +124,27 @@ Leviathan::Leviathan(
             (species == LeviathanSpecies::SolarPhoenixSerpent && (i == 4 || i == 8))) {
             seg.hasLateralFins = true;
             seg.finSpan = (species == LeviathanSpecies::ObsidianDreadManta || species == LeviathanSpecies::SolarPhoenixSerpent)
-                ? seg.radius * 4.2f
-                : seg.radius * 3.1f;
+                ? seg.radius * 4.4f
+                : seg.radius * 3.2f;
         } else if (i == numSegments - 1) {
             seg.hasLateralFins = true; // Tail fluke
-            seg.finSpan = seg.radius * 3.2f;
+            seg.finSpan = seg.radius * 3.4f;
         }
     }
+}
+
+bool Leviathan::triggerCounterplayDisruption(const char* /*sourceReason*/) {
+    if (isSlain) return false;
+    if (staggeredWindowTimer > 2.5f && !barrierActive) {
+        return false; // Already staggered
+    }
+    barrierActive = false;
+    staggeredWindowTimer = 8.5f;
+    barrierCycleTimer = 14.0f;
+    aiState = LeviathanState::StaggeredExposed;
+    stateTimer = 8.5f;
+    timesDisrupted++;
+    return true;
 }
 
 void Leviathan::update(
@@ -132,26 +158,44 @@ void Leviathan::update(
         return;
     }
 
-    swimPhase += dt * 3.4f;
+    swimPhase += dt * ((staggeredWindowTimer > 0.0f) ? 1.8f : 3.4f);
     stateTimer -= dt;
     attackCooldown -= dt;
+
+    if (staggeredWindowTimer > 0.0f) {
+        staggeredWindowTimer = std::max(0.0f, staggeredWindowTimer - dt);
+        barrierActive = false;
+    } else {
+        barrierCycleTimer -= dt;
+        if (barrierCycleTimer <= 0.0f) {
+            barrierActive = !barrierActive;
+            barrierCycleTimer = barrierActive ? 11.0f : 9.0f;
+        }
+    }
 
     Vec3& headPos = segments[0].position;
     Vec3 toTarget = primaryTargetPos - headPos;
     float distToTarget = toTarget.length();
 
+    // Multi-harpoon tethering on Storm-Wyrm or Azure Whale disrupts their barrier!
+    if (barrierActive && activeTetherCount >= 2) {
+        triggerCounterplayDisruption("MULTI-HARPOON TETHER OVERLOAD");
+    }
+
     // State transitions
-    if (activeTetherCount > 0) {
+    if (staggeredWindowTimer > 0.0f) {
+        aiState = LeviathanState::StaggeredExposed;
+    } else if (activeTetherCount > 0) {
         aiState = LeviathanState::TetherStruggle;
     } else if (stateTimer <= 0.0f) {
-        if (distToTarget < 420.0f) {
+        if (distToTarget < 440.0f) {
             int roll = rng_.rangeInt(0, 2);
             if (roll == 0) {
                 aiState = LeviathanState::BreachCharge;
                 stateTimer = 6.5f;
             } else if (roll == 1) {
                 aiState = LeviathanState::ArtilleryBarrage;
-                stateTimer = 7.0f;
+                stateTimer = 7.5f;
             } else {
                 aiState = LeviathanState::StalkingOrbit;
                 stateTimer = 9.0f;
@@ -162,7 +206,7 @@ void Leviathan::update(
         }
     }
 
-    // Compute desired Steering Target
+    // Compute desired Steering Target with Species-Specific Flight Signature
     Vec3 desiredPos = homeCenter;
     float desiredSpeed = 38.0f;
 
@@ -180,59 +224,74 @@ void Leviathan::update(
         }
         case LeviathanState::StalkingOrbit: {
             float orbitAngle = swimPhase * 0.32f;
+            float orbitRad = (species_ == LeviathanSpecies::ObsidianDreadManta) ? 160.0f : 135.0f;
+            float altOffset = (species_ == LeviathanSpecies::SolarPhoenixSerpent) ? 52.0f : 16.0f;
             desiredPos = primaryTargetPos + Vec3{
-                std::cos(orbitAngle) * 135.0f,
-                15.0f + std::sin(swimPhase * 0.7f) * 22.0f,
-                std::sin(orbitAngle) * 135.0f
+                std::cos(orbitAngle) * orbitRad,
+                altOffset + std::sin(swimPhase * 0.7f) * 24.0f,
+                std::sin(orbitAngle) * orbitRad
             };
-            desiredSpeed = 52.0f;
+            desiredSpeed = (species_ == LeviathanSpecies::CrimsonStormWyrm) ? 62.0f : 52.0f;
             jawAngle = 0.25f;
             break;
         }
         case LeviathanState::BreachCharge: {
             desiredPos = primaryTargetPos;
-            desiredSpeed = 76.0f;
-            jawAngle = 0.65f;
+            desiredSpeed = (species_ == LeviathanSpecies::CrimsonStormWyrm) ? 84.0f : 76.0f;
+            jawAngle = 0.68f;
             break;
         }
         case LeviathanState::ArtilleryBarrage: {
             float orbitAngle = swimPhase * 0.25f;
             desiredPos = primaryTargetPos + Vec3{
                 std::cos(orbitAngle) * 165.0f,
-                35.0f,
+                (species_ == LeviathanSpecies::SolarPhoenixSerpent) ? 60.0f : 35.0f,
                 std::sin(orbitAngle) * 165.0f
             };
             desiredSpeed = 44.0f;
             jawAngle = 0.55f;
 
-            if (attackCooldown <= 0.0f && distToTarget < 460.0f) {
-                attackCooldown = (species_ == LeviathanSpecies::MaelstromSovereign) ? 1.4f : 2.2f;
+            if (attackCooldown <= 0.0f && distToTarget < 480.0f) {
+                attackCooldown = (species_ == LeviathanSpecies::MaelstromSovereign) ? 1.35f : 2.1f;
                 Vec3 dir = (primaryTargetPos - headPos).normalized();
-                for (int b = -1; b <= 1; ++b) {
-                    Vec3 spread{
-                        dir.x + static_cast<float>(b) * 0.09f * dir.z,
-                        dir.y + 0.04f,
-                        dir.z - static_cast<float>(b) * 0.09f * dir.x
-                    };
-                    LeviathanAttackBolt bolt;
-                    bolt.origin = headPos + segments[0].forward * (segments[0].radius + 2.0f);
-                    bolt.velocity = spread.normalized() * 155.0f;
-                    bolt.damage = 42.0f;
-                    bolt.color = coreColor;
-                    outAttacks.push_back(bolt);
+
+                if (species_ == LeviathanSpecies::ObsidianDreadManta && segments.size() > 3) {
+                    // Wingtip void-dart twin salvo from lateral fins
+                    for (int side = -1; side <= 1; side += 2) {
+                        Vec3 rightVec = Vec3{dir.z, 0.0f, -dir.x}.normalized();
+                        LeviathanAttackBolt bolt;
+                        bolt.origin = segments[2].position + rightVec * (static_cast<float>(side) * 18.0f);
+                        bolt.velocity = (primaryTargetPos - bolt.origin).normalized() * 175.0f;
+                        bolt.damage = 44.0f;
+                        bolt.color = coreColor;
+                        outAttacks.push_back(bolt);
+                    }
+                } else {
+                    int spreadCount = (species_ == LeviathanSpecies::AzureSkyWhale || species_ == LeviathanSpecies::MaelstromSovereign) ? 2 : 1;
+                    for (int b = -spreadCount; b <= spreadCount; ++b) {
+                        Vec3 spread{
+                            dir.x + static_cast<float>(b) * 0.08f * dir.z,
+                            dir.y + 0.035f,
+                            dir.z - static_cast<float>(b) * 0.08f * dir.x
+                        };
+                        LeviathanAttackBolt bolt;
+                        bolt.origin = headPos + segments[0].forward * (segments[0].radius + 2.0f);
+                        bolt.velocity = spread.normalized() * 155.0f;
+                        bolt.damage = 42.0f;
+                        bolt.color = coreColor;
+                        outAttacks.push_back(bolt);
+                    }
                 }
             }
             break;
         }
         case LeviathanState::TetherStruggle: {
-            // Thrash and try to dive or pull away while tethered by harpoons
             Vec3 away = (headPos - primaryTargetPos).normalized();
             desiredPos = headPos + away * 120.0f + Vec3{
                 std::sin(swimPhase * 1.8f) * 45.0f,
                 std::cos(swimPhase * 1.3f) * 35.0f,
                 std::cos(swimPhase * 1.8f) * 45.0f
             };
-            // Each harpoon slows the Leviathan down!
             desiredSpeed = std::max(22.0f, 58.0f - static_cast<float>(activeTetherCount) * 9.0f);
             jawAngle = 0.45f + 0.2f * std::sin(swimPhase * 4.0f);
 
@@ -245,6 +304,18 @@ void Leviathan::update(
                 bolt.color = coreColor;
                 outAttacks.push_back(bolt);
             }
+            break;
+        }
+        case LeviathanState::StaggeredExposed: {
+            // Staggered resonance opening: slow drifting bank with exposed glowing cores!
+            float driftAngle = swimPhase * 0.12f;
+            desiredPos = headPos + Vec3{
+                std::cos(driftAngle) * 45.0f,
+                -4.0f,
+                std::sin(driftAngle) * 45.0f
+            };
+            desiredSpeed = 19.0f;
+            jawAngle = 0.72f;
             break;
         }
     }
@@ -266,7 +337,7 @@ void Leviathan::update(
     }
 
     // 3D Spine Inverse Kinematics: Follow-the-Leader with Sinusoidal Undulation
-    bool isLateralSwimmer = (species_ == LeviathanSpecies::CrimsonStormWyrm);
+    bool isLateralSwimmer = (species_ == LeviathanSpecies::CrimsonStormWyrm || species_ == LeviathanSpecies::SolarPhoenixSerpent);
     for (size_t i = 1; i < segments.size(); ++i) {
         LeviathanSegment& prev = segments[i - 1];
         LeviathanSegment& cur = segments[i];
@@ -293,13 +364,30 @@ float Leviathan::damageSegment(int segmentIdx, float rawDamage, bool isHarpoonHi
     LeviathanSegment& seg = segments[static_cast<size_t>(segmentIdx)];
     float mult = 1.0f;
 
+    // Species-specific weak-point counterplays:
+    if (species_ == LeviathanSpecies::SolarPhoenixSerpent &&
+        segmentIdx >= static_cast<int>(segments.size()) - 5 && barrierActive) {
+        triggerCounterplayDisruption("TAIL EXHAUST VENT CRIT");
+    }
+
+    float prevArmor = seg.armorHp;
     if (seg.armorHp > 0.0f) {
-        seg.armorHp = std::max(0.0f, seg.armorHp - rawDamage * (isHarpoonHit ? 1.5f : 1.0f));
+        seg.armorHp = std::max(0.0f, seg.armorHp - rawDamage * (isHarpoonHit ? 1.55f : 1.0f));
         mult = 0.85f; // Armored reduction
+        if (prevArmor > 0.0f && seg.armorHp <= 0.0f && species_ == LeviathanSpecies::GlacialCryoKraken && barrierActive) {
+            triggerCounterplayDisruption("PERMAFROST CARAPACE SHATTERED");
+        }
     } else if (seg.hasWeakSpotCore) {
         mult = 2.4f; // Exposed glowing Aether core weak spot!
     } else {
         mult = 1.35f; // Unarmored flesh
+    }
+
+    // Apply Boss Puzzle Barrier mitigation or Staggered Resonance amplification
+    if (staggeredWindowTimer > 0.0f) {
+        mult *= 1.85f;
+    } else if (barrierActive && !isHarpoonHit) {
+        mult *= 0.48f;
     }
 
     float actualDmg = rawDamage * mult;

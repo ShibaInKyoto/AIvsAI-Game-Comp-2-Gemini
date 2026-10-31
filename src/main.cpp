@@ -62,12 +62,14 @@ Vec3 computePlayer3DAimPoint(const World& world, const Camera3D& camera, Vector2
 
 void setupLeviathanHuntScenario(World& world, float& camYaw, float& camPitch, float& camDist) {
     world.initWorld(1337ULL, 1, false); // Pequod's Wrath Whaler Brig
-    world.playerShip.position = {0.0f, 138.0f, -155.0f};
-    world.playerShip.velocity = {0.0f, 0.0f, -14.0f};
-    world.playerShip.targetCruiseAltitude = 138.0f;
+    world.skyAtmospherePreset = 2;      // Dramatic Crimson Sundown
+    world.playerShip.position = {0.0f, 148.0f, -480.0f};
+    world.playerShip.velocity = {0.0f, 0.0f, -15.0f};
+    world.playerShip.targetCruiseAltitude = 148.0f;
+    world.playerSearchlightOn = true;
     world.leviathans.clear();
-    world.spawnLeviathanEncounter(LeviathanSpecies::CrimsonStormWyrm, {-16.0f, 144.0f, -238.0f});
-    world.spawnLeviathanEncounter(LeviathanSpecies::AzureSkyWhale, {72.0f, 136.0f, -268.0f});
+    world.spawnLeviathanEncounter(LeviathanSpecies::CrimsonStormWyrm, {-28.0f, 155.0f, -568.0f});
+    world.spawnLeviathanEncounter(LeviathanSpecies::AzureSkyWhale, {58.0f, 145.0f, -595.0f});
     // Fire an initial harpoon & broadside toward the Crimson Storm-Wyrm!
     if (!world.leviathans.empty() && !world.leviathans[0].segments.empty()) {
         Vec3 targetPos = world.leviathans[0].segments[2].position;
@@ -85,42 +87,43 @@ void setupLeviathanHuntScenario(World& world, float& camYaw, float& camPitch, fl
         world.statusBannerText = "HARPOON LATCHED onto Draconis Fulmen! Hold [R] to Reel In, [LMB] Broadsides!";
         world.statusBannerTimer = 6.0f;
     }
-    camYaw = 0.28f;
-    camPitch = 0.22f;
-    camDist = 32.0f;
+    camYaw = 0.26f;
+    camPitch = 0.21f;
+    camDist = 31.0f;
 }
 
 void setupFleetSkirmishScenario(World& world, float& camYaw, float& camPitch, float& camDist) {
     world.initWorld(1337ULL, 2, false); // IJN Valkyrie Ironclad Frigate
-    world.playerShip.position = {0.0f, 138.0f, -155.0f};
+    world.skyAtmospherePreset = 0;      // Golden Dawn
+    world.playerShip.position = {0.0f, 148.0f, -480.0f};
     world.playerShip.velocity = {0.0f, 0.0f, -14.0f};
-    world.playerShip.targetCruiseAltitude = 138.0f;
+    world.playerShip.targetCruiseAltitude = 148.0f;
     world.npcShips.clear();
-    world.spawnAlliedWingman(3, {32.0f, 140.0f, -178.0f});
-    world.spawnPirateSquadron(3, {-12.0f, 142.0f, -205.0f});
+    world.spawnAlliedWingman(3, {32.0f, 150.0f, -504.0f});
+    world.spawnPirateSquadron(3, {-16.0f, 151.0f, -534.0f});
     // Upgrade pirate squadron to armored Frigates & Dreadnoughts in broadside formation
     if (world.npcShips.size() >= 4) {
         ShipBlueprints::applyBlueprint(world.npcShips[1], 2);
         world.npcShips[1].setName("Corsair Ironclad");
-        world.npcShips[1].position = {-34.0f, 142.0f, -192.0f};
-        world.npcShips[1].yaw = 0.15f;
+        world.npcShips[1].position = {-34.0f, 150.0f, -528.0f};
+        world.npcShips[1].yaw = 0.18f;
 
         ShipBlueprints::applyBlueprint(world.npcShips[2], 4);
         world.npcShips[2].setName("Corsair Flagship");
-        world.npcShips[2].position = {-6.0f, 146.0f, -222.0f};
+        world.npcShips[2].position = {-4.0f, 154.0f, -560.0f};
         world.npcShips[2].yaw = 1.45f;
 
         ShipBlueprints::applyBlueprint(world.npcShips[3], 1);
         world.npcShips[3].setName("Corsair Raider");
-        world.npcShips[3].position = {26.0f, 143.0f, -208.0f};
+        world.npcShips[3].position = {28.0f, 151.0f, -542.0f};
         world.npcShips[3].yaw = -0.35f;
     }
-    world.firePlayerWeapons(true, false, {-32.0f, 142.0f, -192.0f});
+    world.firePlayerWeapons(true, false, {-34.0f, 150.0f, -528.0f});
     world.statusBannerText = "SKY-ARMADA SKIRMISH: Allied Squadron Engaging Corsair Armada!";
     world.statusBannerTimer = 6.0f;
     camYaw = 0.28f;
     camPitch = 0.20f;
-    camDist = 33.0f;
+    camDist = 32.0f;
 }
 
 } // namespace
@@ -136,6 +139,8 @@ int main(int argc, char** argv) {
     InitWindow(config.windowWidth, config.windowHeight, "AETHERNAUT: 3D Sky-Fleet Architect & Leviathan Hunter");
     SetExitKey(KEY_NULL);
     SetTargetFPS(144);
+
+    HudRenderer::initFonts();
 
     ShaderPipeline shaderPipeline;
     shaderPipeline.init(GetScreenWidth(), GetScreenHeight());
@@ -153,12 +158,12 @@ int main(int argc, char** argv) {
     // 3D Orbit Camera State
     Camera3D camera{};
     camera.up = {0.0f, 1.0f, 0.0f};
-    camera.fovy = 52.0f;
+    camera.fovy = config.cameraFov;
     camera.projection = CAMERA_PERSPECTIVE;
 
     float camYaw = 0.55f;
-    float camPitch = 0.25f;
-    float camDist = 32.0f;
+    float camPitch = 0.23f;
+    float camDist = 29.0f;
 
     ActiveScreen currentScreen = ActiveScreen::Title;
     if (config.startScene == InitialScene::Flight) {
@@ -172,8 +177,8 @@ int main(int argc, char** argv) {
         world.playerGold = 99999;
         world.playerAether = 999;
         camYaw = 0.62f;
-        camPitch = 0.34f;
-        camDist = 29.0f;
+        camPitch = 0.32f;
+        camDist = 28.0f;
     } else if (config.startScene == InitialScene::LeviathanHunt) {
         currentScreen = ActiveScreen::Flight;
         setupLeviathanHuntScenario(world, camYaw, camPitch, camDist);
@@ -194,19 +199,40 @@ int main(int argc, char** argv) {
     bool showLedgerModal = false;
     bool showRelicsModal = false;
     bool showMedalsModal = false;
+    bool showWondersModal = false;
+    bool showSettingsModal = false;
+    bool showPauseModal = false;
+    bool shouldExitGame = false;
+
+    auto closeSubModals = [&]() {
+        showWorldMap = false;
+        showCrewModal = false;
+        showCodex = false;
+        showLedgerModal = false;
+        showRelicsModal = false;
+        showMedalsModal = false;
+        showWondersModal = false;
+        showSettingsModal = false;
+    };
+
+    auto anySubModalOpen = [&]() -> bool {
+        return showWorldMap || showCrewModal || showCodex || showLedgerModal ||
+               showRelicsModal || showMedalsModal || showWondersModal || showSettingsModal;
+    };
 
     float totalElapsed = 0.0f;
     float physicsAccumulator = 0.0f;
     constexpr float kFixedStep = 1.0f / 120.0f;
     bool screenshotCaptured = false;
 
-    while (!WindowShouldClose()) {
+    while (!WindowShouldClose() && !shouldExitGame) {
         float frameDt = std::min(0.05f, GetFrameTime());
         totalElapsed += frameDt;
 
         int screenW = GetScreenWidth();
         int screenH = GetScreenHeight();
         shaderPipeline.checkResize(screenW, screenH);
+        camera.fovy = config.cameraFov;
 
         if (IsKeyPressed(KEY_F3)) {
             config.showPerfOverlay = !config.showPerfOverlay;
@@ -220,11 +246,13 @@ int main(int argc, char** argv) {
 
         // Camera Orbit Controls (Right-Mouse Drag in Drydock, or Mouse Wheel Zoom, or Q/E Orbit)
         float wheel = GetMouseWheelMove();
-        if (std::abs(wheel) > 0.01f) {
+        if (std::abs(wheel) > 0.01f && !anySubModalOpen() && !showPauseModal) {
             camDist = std::clamp(camDist - wheel * 4.5f, 16.0f, 145.0f);
         }
-        if (IsKeyDown(KEY_Q)) camYaw -= 1.4f * frameDt;
-        if (IsKeyDown(KEY_E)) camYaw += 1.4f * frameDt;
+        if (!showPauseModal && !anySubModalOpen()) {
+            if (IsKeyDown(KEY_Q)) camYaw -= 1.4f * frameDt;
+            if (IsKeyDown(KEY_E)) camYaw += 1.4f * frameDt;
+        }
 
         if (currentScreen == ActiveScreen::Drydock && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
             Vector2 delta = GetMouseDelta();
@@ -238,7 +266,12 @@ int main(int argc, char** argv) {
         bool canDockAtPort = (nearestPort != nullptr && portDist < nearestPort->radius + 95.0f);
         std::string nearestPortName = nearestPort ? nearestPort->name : "Drydock";
 
+        bool isRunEnded = (currentScreen == ActiveScreen::Flight) && (world.playerShip.isDestroyed || world.victoryAchieved);
+
         if (currentScreen == ActiveScreen::Title) {
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                if (anySubModalOpen()) closeSubModals();
+            }
             // Live AI attract battle in background on title screen while orbiting the flagship
             world.playerAutopilot = true;
             physicsAccumulator += frameDt;
@@ -246,85 +279,110 @@ int main(int argc, char** argv) {
                 world.step(kFixedStep);
                 physicsAccumulator -= kFixedStep;
             }
-            camYaw += 0.32f * frameDt;
-            camPitch = 0.25f;
-            camDist = 29.0f;
+            camYaw += 0.30f * frameDt;
+            camPitch = 0.23f;
+            camDist = 28.0f;
         } else if (currentScreen == ActiveScreen::Flight) {
-            if (IsKeyPressed(KEY_P)) {
-                world.playerAutopilot = !world.playerAutopilot;
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                if (anySubModalOpen()) {
+                    closeSubModals();
+                } else if (!isRunEnded) {
+                    showPauseModal = !showPauseModal;
+                }
             }
-            if (IsKeyPressed(KEY_Y)) {
-                world.cyclePlayerLivery();
-            }
-            if (IsKeyPressed(KEY_TAB)) {
-                world.isPlayerWalkingOnDeck = !world.isPlayerWalkingOnDeck;
-            }
-            if (IsKeyPressed(KEY_M)) {
-                showWorldMap = !showWorldMap;
-                if (showWorldMap) { showCrewModal = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; showMedalsModal = false; }
-            }
-            if (IsKeyPressed(KEY_K)) {
-                showCrewModal = !showCrewModal;
-                if (showCrewModal) { showWorldMap = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; showMedalsModal = false; }
-            }
-            if (IsKeyPressed(KEY_J)) {
-                showLedgerModal = !showLedgerModal;
-                if (showLedgerModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showRelicsModal = false; showMedalsModal = false; }
-            }
-            if (IsKeyPressed(KEY_L)) {
-                showRelicsModal = !showRelicsModal;
-                if (showRelicsModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showLedgerModal = false; showMedalsModal = false; }
-            }
-            if (IsKeyPressed(KEY_O)) {
-                showMedalsModal = !showMedalsModal;
-                if (showMedalsModal) { showWorldMap = false; showCrewModal = false; showCodex = false; showLedgerModal = false; showRelicsModal = false; }
-            }
-            if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_F1)) {
-                showCodex = !showCodex;
-                if (showCodex) { showWorldMap = false; showCrewModal = false; showLedgerModal = false; showRelicsModal = false; showMedalsModal = false; }
-            }
-            if (IsKeyPressed(KEY_Z)) {
-                world.cycleFleetOrder();
-            }
-            if (IsKeyPressed(KEY_T)) {
-                world.cycleWeatherState();
-            }
-            if (IsKeyPressed(KEY_U)) {
-                world.hireAlliedWingman();
-            }
-            if (IsKeyPressed(KEY_X) || IsKeyPressed(KEY_ONE)) {
-                world.triggerDamageControl();
-            }
-            if (IsKeyPressed(KEY_C) || IsKeyPressed(KEY_TWO)) {
-                world.triggerSonarPing();
-            }
-            if (IsKeyPressed(KEY_G) || IsKeyPressed(KEY_THREE)) {
-                world.deploySkyMine();
-            }
-            if (IsKeyPressed(KEY_FOUR)) {
-                world.triggerEmpNova();
-            }
-            if (IsKeyPressed(KEY_N)) {
-                world.summonApexLeviathan();
-            }
-            if (IsKeyPressed(KEY_I)) {
-                world.spawnCorsairDreadArk();
-            }
-            if (IsKeyPressed(KEY_F6)) {
-                world.saveCampaign("campaign_save.aeth");
-            }
-            if (IsKeyPressed(KEY_F7)) {
-                world.loadCampaign("campaign_save.aeth");
-            }
-            if (IsKeyPressed(KEY_B) && (canDockAtPort || world.isSandboxMode)) {
-                currentScreen = ActiveScreen::Drydock;
-                camYaw = 0.62f;
-                camPitch = 0.34f;
-                camDist = 29.0f;
+
+            if (!showPauseModal && !isRunEnded) {
+                if (IsKeyPressed(KEY_P)) {
+                    world.playerAutopilot = !world.playerAutopilot;
+                }
+                if (IsKeyPressed(KEY_Y)) {
+                    world.cyclePlayerLivery();
+                }
+                if (IsKeyPressed(KEY_L)) {
+                    world.togglePlayerSearchlight();
+                }
+                if (IsKeyPressed(KEY_TAB)) {
+                    world.isPlayerWalkingOnDeck = !world.isPlayerWalkingOnDeck;
+                }
+                if (IsKeyPressed(KEY_M)) {
+                    bool next = !showWorldMap;
+                    closeSubModals();
+                    showWorldMap = next;
+                }
+                if (IsKeyPressed(KEY_K)) {
+                    bool next = !showCrewModal;
+                    closeSubModals();
+                    showCrewModal = next;
+                }
+                if (IsKeyPressed(KEY_J)) {
+                    bool next = !showLedgerModal;
+                    closeSubModals();
+                    showLedgerModal = next;
+                }
+                if (IsKeyPressed(KEY_U)) {
+                    bool next = !showRelicsModal;
+                    closeSubModals();
+                    showRelicsModal = next;
+                }
+                if (IsKeyPressed(KEY_O)) {
+                    bool next = !showMedalsModal;
+                    closeSubModals();
+                    showMedalsModal = next;
+                }
+                if (IsKeyPressed(KEY_F2)) {
+                    bool next = !showWondersModal;
+                    closeSubModals();
+                    showWondersModal = next;
+                }
+                if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_F1)) {
+                    bool next = !showCodex;
+                    closeSubModals();
+                    showCodex = next;
+                }
+                if (IsKeyPressed(KEY_Z)) {
+                    world.cycleFleetOrder();
+                }
+                if (IsKeyPressed(KEY_T)) {
+                    world.cycleWeatherState();
+                }
+                if (IsKeyPressed(KEY_F8)) {
+                    world.hireAlliedWingman();
+                }
+                if (IsKeyPressed(KEY_X) || IsKeyPressed(KEY_ONE)) {
+                    world.triggerDamageControl();
+                }
+                if (IsKeyPressed(KEY_C) || IsKeyPressed(KEY_TWO)) {
+                    world.triggerSonarPing();
+                }
+                if (IsKeyPressed(KEY_G) || IsKeyPressed(KEY_THREE)) {
+                    world.deploySkyMine();
+                }
+                if (IsKeyPressed(KEY_FOUR)) {
+                    world.triggerEmpNova();
+                }
+                if (IsKeyPressed(KEY_N)) {
+                    world.summonApexLeviathan();
+                }
+                if (IsKeyPressed(KEY_I)) {
+                    world.spawnCorsairDreadArk();
+                }
+                if (IsKeyPressed(KEY_F6)) {
+                    world.saveCampaign("campaign_save.aeth");
+                }
+                if (IsKeyPressed(KEY_F7)) {
+                    world.loadCampaign("campaign_save.aeth");
+                }
+                if (IsKeyPressed(KEY_B) && (canDockAtPort || world.isSandboxMode)) {
+                    closeSubModals();
+                    currentScreen = ActiveScreen::Drydock;
+                    camYaw = 0.62f;
+                    camPitch = 0.32f;
+                    camDist = 28.0f;
+                }
             }
 
             // Player Manual Flight / Deck Controls
-            if (!world.playerAutopilot && !showWorldMap && !showCrewModal && !showCodex && !showLedgerModal && !showRelicsModal && !showMedalsModal) {
+            if (!world.playerAutopilot && !showPauseModal && !isRunEnded && !anySubModalOpen()) {
                 if (world.isPlayerWalkingOnDeck) {
                     float fwd = 0.0f, right = 0.0f;
                     if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) fwd += 1.0f;
@@ -364,16 +422,18 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // Fixed-timestep 120Hz 3D Physics Step
-            physicsAccumulator += frameDt;
-            while (physicsAccumulator >= kFixedStep) {
-                world.step(kFixedStep);
-                physicsAccumulator -= kFixedStep;
+            // Fixed-timestep 120Hz 3D Physics Step (paused when Pause Modal or Run Report is up)
+            if (!showPauseModal && !isRunEnded) {
+                physicsAccumulator += frameDt;
+                while (physicsAccumulator >= kFixedStep) {
+                    world.step(kFixedStep);
+                    physicsAccumulator -= kFixedStep;
+                }
             }
         } else if (currentScreen == ActiveScreen::Drydock) {
             bool exitDrydock = false;
             drydockEditor.update(world, camera, screenW, screenH, exitDrydock);
-            if (exitDrydock) {
+            if (exitDrydock || IsKeyPressed(KEY_ESCAPE)) {
                 currentScreen = ActiveScreen::Flight;
                 camYaw = 0.18f;
                 camPitch = 0.24f;
@@ -397,14 +457,15 @@ int main(int argc, char** argv) {
                 std::sin(camPitch) * camDist + 4.5f,
                 std::cos(effectiveYaw) * std::cos(camPitch) * camDist
             };
-            // On Title Screen, shift camera target slightly left so the 3D flagship sits in the right half of the viewport
+            // On Title Screen, shift camera target slightly left so the 3D flagship sits prominently in the right 68% of the viewport
             Vec3 targetShift{0.0f, 2.2f, 0.0f};
             if (currentScreen == ActiveScreen::Title) {
                 Vec3 camRight{std::cos(effectiveYaw), 0.0f, -std::sin(effectiveYaw)};
-                targetShift -= camRight * 7.5f;
+                targetShift -= camRight * 5.8f;
             }
-            // Subtle physical 3D camera recoil / impact shake from world.cameraTrauma
-            float shakeMag = world.cameraTrauma * world.cameraTrauma * 1.35f;
+            // Subtle physical 3D camera recoil / impact shake from world.cameraTrauma (scaled down when reduceFlashing is active)
+            float traumaScale = config.reduceFlashing ? 0.25f : 1.35f;
+            float shakeMag = world.cameraTrauma * world.cameraTrauma * traumaScale;
             Vec3 shakeOffset{
                 std::sin(totalElapsed * 47.0f) * shakeMag,
                 std::cos(totalElapsed * 53.0f) * shakeMag * 0.7f,
@@ -415,13 +476,18 @@ int main(int argc, char** argv) {
         }
 
         // Update Visual Particles & Procedural Audio
-        worldRenderer.updateEffects(world, frameDt);
+        if (!showPauseModal) {
+            worldRenderer.updateEffects(world, frameDt);
+        }
         synthAudio.processWorldEvents(world, shipPos, config.sfxVolume, config.musicVolume);
 
         // Compute storm lightning flash intensity
         float stormFlash = 0.0f;
         for (const auto& st : world.archipelago.storms) {
             stormFlash = std::max(stormFlash, st.lightningFlashAlpha);
+        }
+        if (config.reduceFlashing) {
+            stormFlash *= 0.15f;
         }
 
         // ---------------------------------------------------------------------
@@ -446,6 +512,15 @@ int main(int argc, char** argv) {
             if (act == TitleAction::StartCampaign) {
                 world.initWorld(config.worldSeed, selectedBlueprint, false);
                 world.playerAutopilot = false;
+                closeSubModals();
+                camYaw = 0.18f;
+                camPitch = 0.24f;
+                camDist = 34.0f;
+                currentScreen = ActiveScreen::Flight;
+            } else if (act == TitleAction::StartDailyVoyage) {
+                world.startDailySkyVoyage();
+                world.playerAutopilot = false;
+                closeSubModals();
                 camYaw = 0.18f;
                 camPitch = 0.24f;
                 camDist = 34.0f;
@@ -453,18 +528,36 @@ int main(int argc, char** argv) {
             } else if (act == TitleAction::StartDrydockSandbox) {
                 world.initWorld(config.worldSeed, selectedBlueprint, true);
                 world.playerAutopilot = false;
+                closeSubModals();
                 camYaw = 0.62f;
-                camPitch = 0.34f;
-                camDist = 29.0f;
+                camPitch = 0.32f;
+                camDist = 28.0f;
                 currentScreen = ActiveScreen::Drydock;
             } else if (act == TitleAction::StartLeviathanHunt) {
                 world.playerAutopilot = false;
+                closeSubModals();
                 setupLeviathanHuntScenario(world, camYaw, camPitch, camDist);
                 currentScreen = ActiveScreen::Flight;
             } else if (act == TitleAction::StartFleetSkirmish) {
                 world.playerAutopilot = false;
+                closeSubModals();
                 setupFleetSkirmishScenario(world, camYaw, camPitch, camDist);
                 currentScreen = ActiveScreen::Flight;
+            } else if (act == TitleAction::OpenWondersArchive) {
+                closeSubModals();
+                showWondersModal = true;
+            } else if (act == TitleAction::OpenSettings) {
+                closeSubModals();
+                showSettingsModal = true;
+            } else if (act == TitleAction::QuitGame) {
+                shouldExitGame = true;
+            }
+
+            if (showWondersModal) {
+                hudRenderer.drawWondersAndLogsModal(world, screenW, screenH, showWondersModal);
+            }
+            if (showSettingsModal) {
+                hudRenderer.drawSettingsModal(config, world, screenW, screenH, showSettingsModal);
             }
         } else if (currentScreen == ActiveScreen::Flight) {
             bool requestOpenDrydock = false;
@@ -473,10 +566,11 @@ int main(int argc, char** argv) {
                 canDockAtPort, nearestPortName, requestOpenDrydock
             );
             if (requestOpenDrydock) {
+                closeSubModals();
                 currentScreen = ActiveScreen::Drydock;
                 camYaw = 0.62f;
-                camPitch = 0.34f;
-                camDist = 29.0f;
+                camPitch = 0.32f;
+                camDist = 28.0f;
             }
             if (showWorldMap) {
                 hudRenderer.drawWorldMapModal(world, screenW, screenH, showWorldMap);
@@ -493,8 +587,69 @@ int main(int argc, char** argv) {
             if (showMedalsModal) {
                 hudRenderer.drawMedalsModal(world, screenW, screenH, showMedalsModal);
             }
+            if (showWondersModal) {
+                hudRenderer.drawWondersAndLogsModal(world, screenW, screenH, showWondersModal);
+            }
             if (showCodex) {
                 hudRenderer.drawCodexModal(screenW, screenH, showCodex);
+            }
+            if (showSettingsModal) {
+                hudRenderer.drawSettingsModal(config, world, screenW, screenH, showSettingsModal);
+            }
+            if (isRunEnded) {
+                RunReportAction rAct = RunReportAction::None;
+                hudRenderer.drawRunReportModal(world, screenW, screenH, rAct);
+                if (rAct == RunReportAction::EmergencyRefloat) {
+                    if (world.playerShip.isDestroyed) {
+                        world.emergencyRefloatPlayerShip();
+                    } else {
+                        world.victoryAchieved = false; // Continue free-roaming voyage
+                    }
+                } else if (rAct == RunReportAction::StartNewVoyage) {
+                    if (world.isDailyVoyage) {
+                        world.startDailySkyVoyage();
+                    } else {
+                        world.initWorld(config.worldSeed, selectedBlueprint, false);
+                    }
+                    world.playerAutopilot = false;
+                } else if (rAct == RunReportAction::ReturnToTitle) {
+                    closeSubModals();
+                    showPauseModal = false;
+                    currentScreen = ActiveScreen::Title;
+                }
+            } else if (showPauseModal) {
+                PauseAction pAct = PauseAction::None;
+                hudRenderer.drawPauseModal(world, screenW, screenH, showPauseModal, pAct);
+                if (pAct == PauseAction::Resume) {
+                    showPauseModal = false;
+                } else if (pAct == PauseAction::OpenDrydock) {
+                    showPauseModal = false;
+                    closeSubModals();
+                    currentScreen = ActiveScreen::Drydock;
+                    camYaw = 0.62f;
+                    camPitch = 0.32f;
+                    camDist = 28.0f;
+                } else if (pAct == PauseAction::OpenSettings) {
+                    showPauseModal = false;
+                    showSettingsModal = true;
+                } else if (pAct == PauseAction::OpenWondersArchive) {
+                    showPauseModal = false;
+                    showWondersModal = true;
+                } else if (pAct == PauseAction::OpenCodex) {
+                    showPauseModal = false;
+                    showCodex = true;
+                } else if (pAct == PauseAction::SaveCampaign) {
+                    world.saveCampaign("campaign_save.aeth");
+                    showPauseModal = false;
+                } else if (pAct == PauseAction::LoadCampaign) {
+                    world.loadCampaign("campaign_save.aeth");
+                    showPauseModal = false;
+                } else if (pAct == PauseAction::ReturnToTitle) {
+                    world.saveCampaign("campaign_save.aeth");
+                    showPauseModal = false;
+                    closeSubModals();
+                    currentScreen = ActiveScreen::Title;
+                }
             }
         } else if (currentScreen == ActiveScreen::Drydock) {
             bool exitDrydock = false;
@@ -513,7 +668,7 @@ int main(int argc, char** argv) {
             char pbuf[64];
             std::snprintf(pbuf, sizeof(pbuf), "Blocks: %d | Proj: %zu",
                           world.playerShip.occupiedBlockCount, world.projectiles.size());
-            DrawText(pbuf, 24, 42, 13, Color{145, 225, 255, 255});
+            HudRenderer::drawTextAA(pbuf, 24, 42, 13, Color{145, 225, 255, 255});
         }
 
         EndDrawing();
@@ -537,6 +692,7 @@ int main(int argc, char** argv) {
     synthAudio.shutdown();
     worldRenderer.shutdown();
     shaderPipeline.shutdown();
+    HudRenderer::shutdownFonts();
     CloseWindow();
     return 0;
 }
