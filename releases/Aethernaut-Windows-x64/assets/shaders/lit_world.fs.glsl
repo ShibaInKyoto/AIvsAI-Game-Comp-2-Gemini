@@ -151,33 +151,40 @@ void main() {
         specStrength = 0.85;
         rimStrength = 0.42;
     } else if (uMaterialType == 5) {
-        // MAT_GAS_ENVELOPE: Streamlined stitched dirigible silk & warm internal glow
-        float goreSeam = abs(sin(fragLocalPos.x * 10.0)) * abs(sin(fragLocalPos.z * 6.0));
-        float weave = noise3D(fragPosition * 2.5) * 0.08;
-        baseAlbedo *= (0.93 + 0.09 * goreSeam + weave);
-        subsurface = 0.38;
-        specPower = 22.0;
-        specStrength = 0.28;
-    } else if (uMaterialType == 6) {
-        // MAT_LEVIATHAN_HIDE: Chitinous armored scales & pulsing bioluminescent veins
-        float scalePattern = noise3D(fragPosition * 0.85);
-        float scaleRidge = smoothstep(0.35, 0.75, scalePattern);
-        float bioVein = smoothstep(0.76, 0.92, noise3D(fragPosition * 0.42 + vec3(0.0, uTime * 0.35, 0.0)));
-        baseAlbedo = mix(baseAlbedo * 0.78, baseAlbedo * 1.22, scaleRidge);
-        vec3 veinGlow = mix(vec3(0.15, 0.95, 1.0), vec3(1.0, 0.55, 0.15), clamp(uEmissive, 0.0, 1.0));
-        baseAlbedo += veinGlow * bioVein * 0.65;
-        extraEmissive = bioVein * 0.75;
-        N = normalize(N + vec3(scaleRidge - 0.5) * 0.25);
-        specPower = 48.0;
-        specStrength = 0.65;
-        rimStrength = 0.48;
-    } else if (uMaterialType == 7) {
-        // MAT_CLOUD_SEA: Billowy atmospheric cloud strata with silver lining
-        float wisp = fbm3(fragPosition * 0.035 + vec3(uTime * 0.04, 0.0, uTime * 0.02));
-        baseAlbedo *= (0.90 + 0.16 * wisp);
-        subsurface = 0.55;
+        // MAT_GAS_ENVELOPE: Ribbed canvas-and-dope Zeppelin envelope with longitudinal stitched gores
+        float goreRib = abs(sin(fragLocalPos.x * 18.0 + fragPosition.x * 0.8));
+        float ringSeam = smoothstep(0.88, 0.98, abs(sin(fragPosition.z * 1.4)));
+        float weave = noise3D(fragPosition * 3.2) * 0.09;
+        baseAlbedo *= (0.88 + 0.14 * goreRib + weave);
+        baseAlbedo = mix(baseAlbedo, baseAlbedo * 0.72, ringSeam * 0.45);
+        N = normalize(N + vec3((goreRib - 0.5) * 0.18, 0.0, ringSeam * 0.15));
+        subsurface = 0.25;
+        specPower = 14.0;
         specStrength = 0.08;
-        rimStrength = 0.35;
+        rimStrength = 0.16;
+    } else if (uMaterialType == 6) {
+        // MAT_LEVIATHAN_HIDE: Weathered hexagonal dragon-chitin armor plates & pulsing bioluminescent seams
+        float scaleA = noise3D(fragPosition * 1.15);
+        float scaleB = noise3D(fragPosition * 2.45 + vec3(4.2, 1.7, 8.1));
+        float plateEdge = smoothstep(0.28, 0.42, scaleA) * (1.0 - smoothstep(0.72, 0.88, scaleB));
+        float bioVein = smoothstep(0.74, 0.90, noise3D(fragPosition * 0.48 + vec3(0.0, uTime * 0.35, 0.0)));
+        baseAlbedo = mix(baseAlbedo * 0.52, baseAlbedo * 1.14, plateEdge);
+        vec3 veinGlow = mix(vec3(0.15, 0.95, 1.0), vec3(1.0, 0.55, 0.15), clamp(uEmissive, 0.0, 1.0));
+        baseAlbedo += veinGlow * bioVein * 0.75;
+        extraEmissive = bioVein * 0.85;
+        N = normalize(N + vec3((scaleA - 0.5) * 0.38, (plateEdge - 0.5) * 0.28, (scaleB - 0.5) * 0.38));
+        specPower = 24.0;
+        specStrength = 0.20;
+        rimStrength = 0.36;
+    } else if (uMaterialType == 7) {
+        // MAT_CLOUD_SEA: Soft matte atmospheric stratocumulus cloud deck with golden silver-lining
+        float wisp = fbm3(fragPosition * 0.028 + vec3(uTime * 0.03, 0.0, uTime * 0.02));
+        float billow = noise3D(fragPosition * 0.09);
+        baseAlbedo *= (0.92 + 0.14 * wisp + 0.06 * billow);
+        N = normalize(vec3(N.x * 0.28 + (wisp - 0.5) * 0.15, max(0.75, abs(N.y)), N.z * 0.28 + (billow - 0.5) * 0.15));
+        subsurface = 0.65;
+        specStrength = 0.0;
+        rimStrength = 0.18;
     } else if (uMaterialType == 8) {
         // MAT_AETHER_CRYSTAL: Faceted sky-crystal & sanctuary resonance obelisk
         float facet = abs(sin(fragPosition.x * 2.2) * cos(fragPosition.y * 2.8) * sin(fragPosition.z * 2.2));

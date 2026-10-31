@@ -21,6 +21,7 @@ void main() {
     fragLocalPos = vertexPosition;
     fragTexCoord = vertexTexCoord;
     fragColor = vertexColor;
-    fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
+    mat3 normalMatrix = transpose(inverse(mat3(matModel)));
+    fragNormal = normalize(normalMatrix * vertexNormal);
     gl_Position = mvp * vec4(vertexPosition, 1.0);
 }
